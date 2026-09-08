@@ -81,6 +81,8 @@
         "repo": "fame-protools-plugin",
         "releaseType": "release"
       }
-    ]
+    ],
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false
   }
 }
