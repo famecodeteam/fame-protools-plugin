@@ -100,6 +100,28 @@ async function main() {
     assert(core.mapCandidate(c, [clip]));
   });
 
+  await check("track name maps a speaker when the clip carries no usable name", () => {
+    // Pro Tools names a consolidated clip "Audio 1_01"; the AE names the
+    // TRACK after the person. That was the first field report's layout.
+    const ptClips = [
+      { id: "1", track: 0, trackName: "Joshua Spanier", name: "Audio 1_01", path: "", type: "audio", start: 0, end: 1500, inPoint: 0, outPoint: 1500, rate: 1, muted: false },
+      { id: "2", track: 1, trackName: "Jason Hemingway", name: "Audio 2_01", path: "", type: "audio", start: 0, end: 1500, inPoint: 0, outPoint: 1500, rate: 1, muted: false },
+    ];
+    const m = core.mapCandidate({ speaker: "joshua_spanier", file: "joshua.wav", startSec: 500, endSec: 500.4 }, ptClips);
+    assert(m && m.track === 0 && near(m.s, 500), JSON.stringify(m));
+    const m2 = core.mapCandidate({ speaker: "jason_hemingway", file: "jason.wav", startSec: 500, endSec: 500.4 }, ptClips);
+    assert(m2 && m2.track === 1, JSON.stringify(m2));
+  });
+  await check("unmappedReason says what was read, not just 'not on timeline'", () => {
+    const info = { clips: [{ track: 0, trackName: "Music", name: "sting", path: "/m/sting.wav", start: 0, end: 5, inPoint: 0, outPoint: 5 }], trackNames: ["Music"], readErrors: [], noDefinition: 0 };
+    const why = core.unmappedReason(info, [{ speaker: "joshua_spanier" }], "Pro Tools");
+    assert(/Read 1 clip/.test(why) && /Music/.test(why) && /joshua_spanier/.test(why) && /Diagnostics/.test(why), why);
+  });
+  await check("unmappedReason names the read failure when no clips came back", () => {
+    const why = core.unmappedReason({ clips: [], readErrors: ["V1: Pro Tools refused GetPlaylistElements."], trackNames: ["V1"] }, [], "Pro Tools");
+    assert(/would not report the clips/.test(why) && /GetPlaylistElements/.test(why), why);
+  });
+
   console.log("pro tools adapter against the mock PTSL server");
   const raw = path.join(OUT, "raw");
   fs.mkdirSync(raw, { recursive: true });

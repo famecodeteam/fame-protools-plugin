@@ -45,9 +45,15 @@
       if (!c.file && !c.speaker) return /^riverside[_-]/i.test(b) || /^riverside[_-]/i.test(cl.name);
       return false;
     });
+    // Fallback 1: the speaker's name on the clip, the file, or THE TRACK.
+    // Pro Tools names a consolidated or recorded clip after the track or
+    // "Audio 1_01"; the editor's own track name is the reliable handle, and
+    // an AE always names the track after the person on it.
     if (!matches.length && c.speaker) {
       matches = clips.filter(function (cl) {
-        return clipMentionsSpeaker(basename(cl.path) || cl.name, c.speaker) || clipMentionsSpeaker(cl.name, c.speaker);
+        return clipMentionsSpeaker(basename(cl.path) || cl.name, c.speaker) ||
+          clipMentionsSpeaker(cl.name, c.speaker) ||
+          clipMentionsSpeaker(cl.trackName, c.speaker);
       });
     }
     if (!matches.length) {
@@ -129,8 +135,38 @@
     return c.length % 2 ? c[mid] : (c[mid - 1] + c[mid]) / 2;
   }
 
+  // Why nothing landed - the sentence an editor and a maintainer can both
+  // act on. Written from the first field report, where every row read
+  // "not on timeline" and the panel said nothing about what it had seen.
+  function unmappedReason(info, cands, daw) {
+    if (!info) return "";
+    var label = daw || "The DAW";
+    var clips = info.clips || [];
+    var errs = info.readErrors || [];
+    if (!clips.length) {
+      if (errs.length) return label + " would not report the clips on " + errs.length + " track(s): " + errs[0] + ".";
+      return "This session has no audio clips on any track yet.";
+    }
+    var speakers = {};
+    (cands || []).forEach(function (c) { if (c.speaker) speakers[c.speaker] = true; });
+    var names = [];
+    clips.forEach(function (cl) {
+      var n = basename(cl.path) || cl.name || cl.trackName;
+      if (n && names.indexOf(n) < 0 && names.length < 4) names.push(n);
+    });
+    var msg = "Read " + clips.length + " clip(s) across " + (info.trackNames || []).length + " track(s)" +
+      ((info.trackNames || []).length ? " (" + info.trackNames.slice(0, 6).join(", ") + ")" : "") +
+      ", but none of them line up with the recordings this analysis used" +
+      (Object.keys(speakers).length ? " (" + Object.keys(speakers).join(", ") + ")" : "") +
+      ". Clips seen: " + names.join(", ") + ".";
+    if (info.noDefinition) msg += " " + info.noDefinition + " clip(s) came back without a source file, so only the track name could be matched.";
+    if (errs.length) msg += " " + errs.length + " track(s) could not be read: " + errs[0] + ".";
+    return msg + " Press Diagnostics, Copy for Tom, and send it over.";
+  }
+
   return {
     basename: basename, clipMentionsSpeaker: clipMentionsSpeaker, mapCandidate: mapCandidate,
+    unmappedReason: unmappedReason,
     selectedRanges: selectedRanges, tracksForSpeaker: tracksForSpeaker, sourceAnchor: sourceAnchor,
     versionNewer: versionNewer, median: median,
     MAX_LEVEL_FIX_DB: 30, FADE_SEC: 0.010,

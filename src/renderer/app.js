@@ -797,10 +797,15 @@ function renderCleanupWith(info, rawErr) {
   var note;
   if (!info) note = DAW_LABEL + " timeline not readable" + (rawErr ? " - " + String(rawErr).replace(/\.$/, "") : "") + ".";
   else if (info.pending) note = "Waiting for " + DAW_LABEL + ".";
-  else if (!clips.length) note = "No clips in this session yet - import the raw recordings (or press Build audio assembly), then Refresh.";
-  else {
+  else if (!clips.length && !(info.readErrors || []).length) note = "No clips in this session yet - import the raw recordings (or press Build audio assembly), then Refresh.";
+  else if (cands.length && !mapped) {
+    // Nothing landed. Say what was actually read - the first real AE saw
+    // every row reading "not on timeline" with nothing explaining why.
+    note = FameCore.unmappedReason(info, cands, DAW_LABEL);
+  } else {
     note = mapped + " of " + cands.length + " found on your timeline.";
     if (cands.length > 20 && mapped > 0 && mapped < cands.length * 0.25) note += " Most sit outside what is on the timeline - if you are on a short section, that is expected.";
+    if ((info.readErrors || []).length) note += " " + info.readErrors.length + " track(s) could not be read: " + info.readErrors[0] + ".";
   }
   var pol = cleanupState && cleanupState.policy;
   if (pol) {

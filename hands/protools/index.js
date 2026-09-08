@@ -138,6 +138,10 @@ class ProToolsHands {
     this.raw.clipList = clipR;
     const defs = {};
     (clipR.clips || []).forEach((c) => { defs[c.clip_id] = c; });
+    // A heavily edited session can hold more clips than one page. Say so
+    // rather than silently matching against a partial clip list.
+    const clipTotal = clipR.pagination_response && Number(clipR.pagination_response.total);
+    const truncated = isFinite(clipTotal) && clipTotal > (clipR.clips || []).length;
     const fileR = await this.client.send("GetFileLocation", {
       page_limit: PAGE.limit, file_filters: ["All_Files"], pagination_request: PAGE,
     }).catch(() => ({ file_locations: [] }));
@@ -146,22 +150,33 @@ class ProToolsHands {
     (fileR.file_locations || []).forEach((f) => { if (f.file_id) paths[f.file_id] = f.path || ""; });
 
     const clips = [];
+    const readErrors = [];
+    let noDefinition = 0;
     this.raw.playlists = {};
     for (const t of tracks) {
       if (!(t.isAudio || t.isVideo)) continue;
       let pl;
       try {
         pl = await this.client.send("GetTrackPlaylists", { track_id: t.id, track_name: t.name, pagination_request: PAGE });
-      } catch (e) { continue; }
+      } catch (e) {
+        // Never swallow this. The first field report was every candidate
+        // reading "not on timeline", and a silent `continue` here looks
+        // exactly like a session with no clips in it.
+        readErrors.push(t.name + ": " + e.message);
+        continue;
+      }
       const main = (pl.playlists || []).find((p) => p.is_target) || (pl.playlists || []).find((p) => enumIs(p.playlist_type, ["main"], 1)) || (pl.playlists || [])[0];
-      if (!main) continue;
+      if (!main) { readErrors.push(t.name + ": no playlist reported"); continue; }
       let el;
       try {
         el = await this.client.send("GetPlaylistElements", {
           playlist_id: main.playlist_id, playlist_name: main.playlist_name || "",
           time_format: "TLType_Samples", pagination_request: PAGE,
         });
-      } catch (e) { continue; }
+      } catch (e) {
+        readErrors.push(t.name + ": " + e.message);
+        continue;
+      }
       this.raw.playlists[t.name] = el;
       (el.elements_list || []).forEach((e, i) => {
         const cc = (e.channel_clips || []).find((c) => c && !c.is_null && c.clip_id) || (e.channel_clips || [])[0];
@@ -175,10 +190,14 @@ class ProToolsHands {
         const trimIn = play != null && play > start ? play - start : 0;
         const srcStart = def ? this._posSec(def.src_start_point, sr) : null;
         const inPoint = srcStart != null ? srcStart + trimIn : start;
+        if (!def) noDefinition++;
         clips.push({
           id: cc ? cc.clip_id : t.id + ":" + i,
           track: t.index, trackName: t.name,
-          name: def ? (def.clip_full_name || def.clip_root_name || "") : "",
+          // With no definition to name it, the TRACK's name is the best
+          // handle there is - an editor names the track after the speaker
+          // far more reliably than Pro Tools names a consolidated clip.
+          name: (def && (def.clip_full_name || def.clip_root_name)) || t.name || "",
           path: def && def.file_id ? (paths[def.file_id] || "") : "",
           type: t.isVideo || (def && enumIs(def.clip_type, ["video"], 3)) ? "video" : "audio",
           start, end, inPoint, outPoint: inPoint + (end - start), rate: 1,
@@ -188,10 +207,20 @@ class ProToolsHands {
     }
     clips.sort((a, b) => a.track - b.track || a.start - b.start);
     const sessionFile = (pathR.session_path && pathR.session_path.path) || "";
+    if (truncated) {
+      readErrors.push("the clip list is longer than one page (" + clipTotal + " clips) - only the first " + (clipR.clips || []).length + " carry a source file");
+    }
+    this.raw.readErrors = readErrors;
+    this.raw.noDefinition = noDefinition;
     return {
       clips, tracks: tracks.length, sampleRate: sr,
       sessionName: nameR.session_name || "",
       sessionPath: sessionFile ? (/\.(ptx|ptf)$/i.test(sessionFile) ? path.dirname(sessionFile) : sessionFile) : "",
+      // What could NOT be read, so the panel can say why rather than
+      // showing an empty timeline and letting the editor guess.
+      readErrors,
+      noDefinition,
+      trackNames: tracks.map((t) => t.name),
       raw: this.raw,
     };
   }
