@@ -1,4 +1,5 @@
-// Fame Pro Tools Plugin - the app's own logic.
+// Fame Pro Tools / Cubase Plugin - the app's own logic (one renderer,
+// two adapters behind window.fame.hands).
 //
 // Ported from the Fame Premiere Plugin's js/main.js almost line for line:
 // auth (Supabase password grant), episode load/search, comment feed,
@@ -9,6 +10,11 @@
 // preflight, audio assembly, music balance, apply-comment.
 //
 // Never a modal dialog in here - confirmInPanel() renders a yes/no block.
+//
+// A file-based DAW (Cubase) cannot be moved from here: its hands resolve
+// with { pending, next } and the UI shows that line, with an Open-folder
+// button, wherever a result would go. DAW_LABEL / FILE_BASED come from the
+// adapter's status(), so no copy below hard-codes a DAW name.
 
 "use strict";
 
@@ -21,6 +27,9 @@ var VERSION_URL = "https://review.fame.so/protools/version.json";
 var INSTALL_URL = "https://review.fame.so/protools";
 var APP_VERSION = "0.0.0"; // filled from package.json by the main process
 var DAW = "protools";
+var DAW_LABEL = "Pro Tools";
+var FILE_BASED = false;
+var DAW_NAMES = { protools: "Pro Tools", cubase: "Cubase" };
 var FADE_MS = 10;
 var MAX_LEVEL_FIX_DB = FameCore.MAX_LEVEL_FIX_DB;
 
@@ -157,7 +166,7 @@ function getToken() {
   }).catch(function (e) { clearSession(); throw e; });
 }
 
-// ---------- Pro Tools connection ----------
+// ---------- DAW connection ----------
 
 var dawStatus = { connected: false, capabilities: {}, dawVersion: "", reason: "" };
 
@@ -166,6 +175,8 @@ function can(cap) { return !!(dawStatus.capabilities && dawStatus.capabilities[c
 function refreshDaw() {
   return hands.status().then(function (st) {
     dawStatus = st;
+    FILE_BASED = !!st.fileBased;
+    DAW_LABEL = st.dawLabel || DAW_NAMES[DAW] || DAW;
     var bar = $("daw-bar");
     bar.innerHTML = "";
     bar.className = st.connected ? "on" : "off";
@@ -174,17 +185,145 @@ function refreshDaw() {
     bar.appendChild(dot);
     var txt = document.createElement("span");
     txt.className = "txt";
-    txt.textContent = st.connected
-      ? ("Pro Tools " + st.dawVersion + " connected" + (st.reason ? " - " + st.reason : ""))
-      : ("Pro Tools not connected - " + st.reason);
+    if (FILE_BASED) {
+      txt.textContent = st.connected
+        ? (DAW_LABEL + " - file-based: exports in, archives out" + (st.reason ? " - " + st.reason : ""))
+        : (DAW_LABEL + " - " + st.reason);
+    } else {
+      txt.textContent = st.connected
+        ? (DAW_LABEL + " " + st.dawVersion + " connected" + (st.reason ? " - " + st.reason : ""))
+        : (DAW_LABEL + " not connected - " + st.reason);
+    }
     bar.appendChild(txt);
     var re = document.createElement("button");
     re.className = "btn-ghost";
-    re.textContent = "Retry";
+    re.textContent = FILE_BASED ? "Refresh" : "Retry";
     re.onclick = function () { refreshDaw(); };
     bar.appendChild(re);
+    renderDawSetup(st);
     return st;
   });
+}
+
+// The Cubase setup card: the exchange folder Cubase exports into, the MIDI
+// port MMC goes out on, and what the folder holds right now. A file-based
+// flow looks broken while it waits - this card always says what is next.
+function renderDawSetup(st) {
+  var host = $("daw-setup");
+  if (!st.fileBased || !st.setup) { host.className = "hidden"; host.innerHTML = ""; return; }
+  host.className = "";
+  host.innerHTML = "";
+  var su = st.setup;
+  var head = document.createElement("div");
+  head.className = "eyebrow";
+  head.textContent = DAW_LABEL + " setup";
+  host.appendChild(head);
+
+  var r1 = document.createElement("div");
+  r1.className = "row";
+  var lbl = document.createElement("span");
+  lbl.textContent = "Exchange folder:";
+  r1.appendChild(lbl);
+  var pth = document.createElement("span");
+  pth.className = "path";
+  pth.textContent = su.exchangeDir || "not set";
+  pth.title = su.exchangeDir || "";
+  r1.appendChild(pth);
+  var pick = document.createElement("button");
+  pick.className = su.exchangeDirOk ? "btn-ghost" : "btn-primary";
+  pick.textContent = su.exchangeDirOk ? "Change" : "Pick folder";
+  pick.onclick = function () {
+    window.fame.pickFolder({ title: "Pick the Fame exchange folder - Cubase exports into it, the Plugin reads from it" }).then(function (d) {
+      if (!d) return;
+      return window.fame.configure({ exchangeDir: d }).then(function () { return refreshDaw(); }).then(function () { if (currentData) renderCleanup(); });
+    }).catch(function (e) { setStatus(e.message, "error"); });
+  };
+  r1.appendChild(pick);
+  if (su.exchangeDirOk) {
+    var open = document.createElement("button");
+    open.className = "btn-ghost";
+    open.textContent = "Open";
+    open.onclick = function () { window.fame.openPath(su.exchangeDir); };
+    r1.appendChild(open);
+  }
+  host.appendChild(r1);
+
+  var r2 = document.createElement("div");
+  r2.className = "row";
+  var ml = document.createElement("span");
+  ml.textContent = "MIDI to " + DAW_LABEL + ":";
+  r2.appendChild(ml);
+  var sel = document.createElement("select");
+  var opts = [];
+  if (su.midi.virtual) opts.push({ v: "", t: "Fame Plugin (built-in port)" });
+  (su.midi.ports || []).forEach(function (p) { opts.push({ v: p, t: p }); });
+  if (!su.midi.virtual && !opts.length) opts.push({ v: "", t: "no MIDI ports - install loopMIDI" });
+  opts.forEach(function (o) {
+    var el = document.createElement("option");
+    el.value = o.v; el.textContent = o.t;
+    if (o.v === (su.midi.chosen || "")) el.selected = true;
+    sel.appendChild(el);
+  });
+  sel.onchange = function () { window.fame.configure({ midiPort: sel.value }).then(function () { return refreshDaw(); }).catch(function (e) { setStatus(e.message, "error"); }); };
+  r2.appendChild(sel);
+  var ms = document.createElement("span");
+  ms.className = su.midi.ok ? "ok" : "warn";
+  ms.textContent = su.midi.ok ? "sending on \"" + su.midi.sendingOn + "\"" : su.midi.reason;
+  r2.appendChild(ms);
+  host.appendChild(r2);
+
+  var r3 = document.createElement("div");
+  r3.className = "row";
+  if (!su.exchangeDirOk) {
+    r3.textContent = "Next: pick the folder above. In Cubase you will export tracks and mixdowns into it; the Plugin reads them from there.";
+  } else if (!su.latestArchive) {
+    r3.textContent = "Next: in Cubase select the speaker tracks, File > Export > Selected Tracks, save the .xml into the folder, then Refresh.";
+  } else {
+    r3.textContent = "Latest archive: " + su.latestArchive.name + " (" + fmtWhen(new Date(su.latestArchive.mtimeMs).toISOString()) + ")" +
+      (su.latestArchive.ours ? " - written by the Plugin; import it in Cubase, or export again to continue from Cubase's state." : "");
+  }
+  host.appendChild(r3);
+  var r4 = document.createElement("div");
+  r4.className = "row";
+  r4.style.color = "var(--muted)";
+  r4.textContent = "One-time: Transport > Project Synchronization Setup > Machine Control > MMC Slave Active, MMC Input = \"" + (su.midi.sendingOn || "Fame Plugin") + "\". Then timestamps jump and play.";
+  host.appendChild(r4);
+}
+
+// Show a pending step (the DAW has not done it yet) where a result would
+// go. `file` gets an Open button that reveals it.
+function showPending(host, text, file) {
+  host = host || $("cl-body");
+  var old = document.getElementById("fame-pending");
+  if (old) old.parentNode.removeChild(old);
+  var box = document.createElement("div");
+  box.id = "fame-pending";
+  box.className = "pending";
+  var b = document.createElement("b");
+  b.textContent = "Next: ";
+  box.appendChild(b);
+  box.appendChild(document.createTextNode(text));
+  if (file) {
+    var btn = document.createElement("button");
+    btn.className = "btn-ghost";
+    btn.textContent = "Show file";
+    btn.onclick = function () { window.fame.showInFolder(file); };
+    box.appendChild(btn);
+  }
+  host.insertBefore(box, host.firstChild);
+  return box;
+}
+
+// Wrap a hands result: a pending one is shown as the next step, a done one
+// as the status line. Returns true when it was pending.
+function afterHands(r, okMsg, host) {
+  if (r && r.pending) {
+    showPending(host, r.next, r.file);
+    setStatus(String(okMsg).replace(/\.\s*$/, "") + " - written for " + DAW_LABEL + ", see the next step.", "ok");
+    return true;
+  }
+  setStatus(okMsg, "ok");
+  return false;
 }
 
 // ---------- recent episodes ----------
@@ -350,7 +489,7 @@ function kindLabel(kind) {
 }
 
 function jump(sec, label) {
-  if (!can("jump")) { setStatus("Pro Tools is not connected - " + dawStatus.reason, "error"); return; }
+  if (!can("jump")) { setStatus(FILE_BASED ? (fmtTime(sec) + " - " + (dawStatus.reason || "set the MIDI port in " + DAW_LABEL + " setup and MMC Slave in " + DAW_LABEL + ", then timestamps jump")) : (DAW_LABEL + " is not connected - " + dawStatus.reason), "error"); return; }
   hands.jumpTo(Number(sec), true).then(function () {
     track("jump");
     setStatus("Jumped to " + fmtTime(sec) + " and playing" + (label ? " - " + label : "") + ".", "ok");
@@ -359,7 +498,7 @@ function jump(sec, label) {
 
 function renderComments() {
   var data = currentData;
-  $("ep-name").textContent = data ? (data.name || data.slug) : "Pro Tools Plugin";
+  $("ep-name").textContent = data ? (data.name || data.slug) : (DAW_LABEL + " Plugin");
   var host = $("comments");
   host.innerHTML = "";
   if (!data) return;
@@ -632,7 +771,7 @@ function pollCleanupLoop() {
 
 // Read the timeline (when Pro Tools can), then draw.
 function renderCleanup() {
-  if (!can("readTimeline")) { clipsInfo = null; renderCleanupWith(null, dawStatus.reason || "Pro Tools not connected"); return; }
+  if (!can("readTimeline")) { clipsInfo = null; renderCleanupWith(null, dawStatus.reason || (DAW_LABEL + " not connected")); return; }
   hands.getClips().then(function (info) {
     clipsInfo = info;
     renderCleanupWith(info, null);
@@ -656,7 +795,8 @@ function renderCleanupWith(info, rawErr) {
     if (!c._seq || c.overlapsSpeaker) cleanupChecks[i] = false;
   });
   var note;
-  if (!info) note = "Pro Tools timeline not readable" + (rawErr ? " - " + String(rawErr).replace(/\.$/, "") : "") + ".";
+  if (!info) note = DAW_LABEL + " timeline not readable" + (rawErr ? " - " + String(rawErr).replace(/\.$/, "") : "") + ".";
+  else if (info.pending) note = "Waiting for " + DAW_LABEL + ".";
   else if (!clips.length) note = "No clips in this session yet - import the raw recordings (or press Build audio assembly), then Refresh.";
   else {
     note = mapped + " of " + cands.length + " found on your timeline.";
@@ -669,6 +809,13 @@ function renderCleanupWith(info, rawErr) {
       (pol.deadAirSeconds ? ", pauses over " + pol.deadAirSeconds + "s" : ", pauses kept") + ".";
   }
   $("cl-sub").textContent = (cands.length ? "Analysis done. " : "Analysis done - nothing to cut. Clean recording! ") + note;
+  if (info && info.pending) showPending(body, info.next, info.file || info.sessionPath);
+  else if (info && info.archive) {
+    var arc = document.createElement("div");
+    arc.className = "cl-notes";
+    arc.textContent = "Timeline read from " + info.archive + " - export again after you re-arrange, then Refresh.";
+    body.appendChild(arc);
+  }
   if (pol && pol.cleanupNotes) {
     var n2 = document.createElement("div");
     n2.className = "cl-notes";
@@ -730,7 +877,7 @@ function renderCleanupWith(info, rawErr) {
       muteBtn.className = "btn-ghost";
       muteBtn.style.marginLeft = "8px";
       muteBtn.textContent = "Silence instead";
-      muteBtn.title = "Clear these from the speaker's own track(s) only - no ripple, the session length does not change. One Undo step each in Pro Tools.";
+      muteBtn.title = "Clear these from the speaker's own track(s) only - no ripple, the session length does not change." + (FILE_BASED ? " Written as an archive you import." : " One Undo step each in " + DAW_LABEL + ".");
       muteBtn.onclick = (function (its, label) {
         return function () { silenceCandidates(its.filter(function (c) { return c._seq; }), label); };
       })(items, g.mutable);
@@ -816,7 +963,9 @@ function renderCleanupWith(info, rawErr) {
   actions.appendChild(apply);
   var note2 = document.createElement("span");
   note2.className = "cl-note";
-  note2.textContent = can("rippleCut") ? "Ripple, every track, " + FADE_MS + "ms fades on each seam. Undo in Pro Tools puts each cut back." : "Needs Pro Tools 2025.10+ connected.";
+  note2.textContent = can("rippleCut")
+    ? (FILE_BASED ? "Writes a cut copy of the exported tracks (ripple, " + FADE_MS + "ms fades) for you to import - the originals stay as your undo." : "Ripple, every track, " + FADE_MS + "ms fades on each seam. Undo in " + DAW_LABEL + " puts each cut back.")
+    : (FILE_BASED ? "Pick the exchange folder and export the tracks first." : "Needs " + DAW_LABEL + " 2025.10+ connected.");
   actions.appendChild(note2);
   body.appendChild(actions);
   updateApplyCount();
@@ -861,7 +1010,7 @@ function renderAudioIssues(body) {
         fix.className = "fix-btn";
         var val = -dB;
         fix.textContent = "Fix levels: " + (val > 0 ? "+" : "") + val.toFixed(1) + " dB on " + is.speaker;
-        fix.title = "Writes the difference as volume automation on this speaker's own track(s). Undo in Pro Tools reverts it.";
+        fix.title = FILE_BASED ? "Writes the difference into the exported tracks' event volume, or tells you the fader value if the export carries none." : "Writes the difference as volume automation on this speaker's own track(s). Undo in " + DAW_LABEL + " reverts it.";
         fix.onclick = function () { applyLevelFix(is.speaker, val, fix); };
         row.appendChild(fix);
       }
@@ -888,8 +1037,8 @@ function applyLevelFix(speaker, dB, btn) {
     levelsApplied[speaker] = dB;
     track("fix_levels");
     logChange("Fix levels: " + (dB > 0 ? "+" : "") + dB.toFixed(1) + " dB on " + speaker + " to match the other speaker");
-    setStatus((dB > 0 ? "+" : "") + dB.toFixed(1) + " dB applied to " + speaker + " on " + r.tracks + " track(s)." + (r.note ? " " + r.note : ""), "ok");
     renderCleanupWith(clipsInfo, null);
+    afterHands(r, (dB > 0 ? "+" : "") + dB.toFixed(1) + " dB for " + speaker + " on " + r.tracks + " track(s)." + (r.note ? " " + r.note : ""));
   }).catch(function (e) { btn.disabled = false; setStatus(e.message, "error"); });
 }
 
@@ -907,8 +1056,9 @@ function confirmApplyCuts() {
   if (!merged.length) return;
   confirmInPanel(
     "Ripple-cut " + merged.length + " range" + (merged.length === 1 ? "" : "s") + " from every track?",
-    ["Later material moves up to close each gap, with a " + FADE_MS + "ms fade on every seam (needs a fade preset named \"Fame 10ms\" - see the working procedure).",
-     "Pro Tools' Undo puts each cut back."],
+    FILE_BASED
+      ? ["Later material moves up to close each gap, with a " + FADE_MS + "ms fade on every seam.", "A cut copy of the exported tracks is written to the exchange folder for you to import - your original tracks stay as the undo."]
+      : ["Later material moves up to close each gap, with a " + FADE_MS + "ms fade on every seam (needs a fade preset named \"Fame 10ms\" - see the working procedure).", DAW_LABEL + "' Undo puts each cut back."],
     "Apply cuts",
     function () { applyCleanupCuts(merged); },
   );
@@ -919,10 +1069,13 @@ function applyCleanupCuts(merged) {
   track("apply_cuts");
   hands.applyRippleCuts(merged).then(function (r) {
     logChange("Cleanup pass: applied " + r.applied + " ripple cut(s) with " + FADE_MS + "ms fades");
-    setStatus(r.applied + " cut(s) applied" + (r.fadesSkipped ? " - " + r.fadesSkipped : " with fades on every seam") + ".", r.fadesSkipped ? "error" : "ok");
     $("cl-sub").textContent = "Cuts applied. Press Refresh to re-map what is left; if you re-edit heavily, Re-analyze before applying more.";
     cleanupChecks = {};
+    var pend = r.pending ? r : null;
     renderCleanup();
+    var msg = r.applied + " cut(s) applied" + (r.fadesSkipped ? " - " + r.fadesSkipped : " with fades on every seam") + ".";
+    if (pend) setTimeout(function () { afterHands(pend, msg); }, 0);
+    else setStatus(msg, r.fadesSkipped ? "error" : "ok");
   }).catch(function (e) { setStatus("Applying cuts failed: " + e.message, "error"); });
 }
 
@@ -944,7 +1097,7 @@ function silenceCandidates(items, label) {
   var total = specs.reduce(function (a, s) { return a + s.ranges.length; }, 0);
   confirmInPanel(
     "Silence " + total + " " + label + " on the speakers' own tracks?",
-    ["Each range is cleared from that speaker's track(s) only - a gap, no ripple, session length unchanged, fades on both edges.", "One Undo step per range in Pro Tools."],
+    ["Each range is cleared from that speaker's track(s) only - a gap, no ripple, session length unchanged, fades on both edges.", FILE_BASED ? "Written as a silenced copy of the exported tracks for you to import." : "One Undo step per range in " + DAW_LABEL + "."],
     "Silence them",
     function () {
       setStatus("Silencing " + label + "…", "", true);
@@ -954,8 +1107,9 @@ function silenceCandidates(items, label) {
         var msg = r.silenced + " range(s) silenced on " + r.tracks + " track(s) - session length unchanged.";
         if (unmatched.length) msg += " No track found for: " + unmatched.join(", ") + ".";
         if (r.fadesSkipped) msg += " " + r.fadesSkipped + ".";
-        setStatus(msg, unmatched.length || r.fadesSkipped ? "error" : "ok");
         renderCleanup();
+        if (r.pending) setTimeout(function () { afterHands(r, msg); }, 0);
+        else setStatus(msg, unmatched.length || r.fadesSkipped ? "error" : "ok");
       }).catch(function (e) { setStatus("Silencing failed: " + e.message, "error"); });
     },
   );
@@ -984,8 +1138,9 @@ function muteOffMic() {
       hands.silenceRanges(specs).then(function (r) {
         track("mute");
         logChange("Silenced " + r.silenced + " off-mic stretch(es) on the speakers' own tracks");
-        setStatus(r.silenced + " off-mic range(s) silenced on " + r.tracks + " track(s)." + (r.fadesSkipped ? " " + r.fadesSkipped + "." : ""), "ok");
         renderCleanup();
+        var m2 = r.silenced + " off-mic range(s) silenced on " + r.tracks + " track(s)." + (r.fadesSkipped ? " " + r.fadesSkipped + "." : "");
+        if (r.pending) setTimeout(function () { afterHands(r, m2); }, 0); else setStatus(m2, "ok");
       }).catch(function (e) { setStatus(e.message, "error"); });
     });
 }
@@ -1023,13 +1178,13 @@ function findRawFolder(wanted) {
 
 function buildAssembly() {
   if (!cleanupState || cleanupState.status !== "ready") { setStatus("Run Analyze first - the assembly uses the recordings the analysis picked.", "error"); return; }
-  if (!can("assembly")) { setStatus("Pro Tools 2025.10+ must be connected.", "error"); return; }
+  if (!can("assembly")) { setStatus(FILE_BASED ? "Pick the exchange folder first (" + DAW_LABEL + " setup)." : DAW_LABEL + " 2025.10+ must be connected.", "error"); return; }
   var plan = assemblyPlan();
   if (!plan.length) { setStatus("The analysis found no recordings to lay out.", "error"); return; }
   confirmInPanel(
     "Lay out " + plan.length + " raw recording(s) as new tracks?",
     ["One track per speaker, added to the session at 0 - nothing existing is touched.",
-     "Then the pre-ticked cleanup cuts and the level fix are applied to it.",
+     FILE_BASED ? "The pre-ticked cleanup cuts and the level fix are baked into clean copies of the files, and a track archive is written for you to import." : "Then the pre-ticked cleanup cuts and the level fix are applied to it.",
      plan.map(function (f) { return f.name + (f.speaker ? "  (" + f.speaker + ")" : ""); }).join("   ")],
     "Build it",
     function () { runAssembly(plan); },
@@ -1060,6 +1215,7 @@ function runAssembly(plan) {
       }
       setStatus("Laying out " + present.length + " track(s)…", "", true);
       track("assembly");
+      if (FILE_BASED) return runAssemblyFileBased(present, missing, dir);
       return hands.buildAssembly(present).then(function (r) {
         logChange("Built the audio assembly: " + r.added + " speaker track(s) from the raw masters");
         cleanupChecks = {};
@@ -1103,6 +1259,48 @@ function runAssembly(plan) {
       });
     });
   }).catch(function (e) { setStatus("Assembly failed: " + e.message, "error"); });
+}
+
+// File-based DAW: the timeline is the files laid out 1:1 from 0, so the
+// pre-ticked cuts (raw-file seconds already) and the level fix go INTO
+// clean copies of the files with ffmpeg, and the editor imports one
+// generated archive. No second round trip.
+function runAssemblyFileBased(present, missing, dir) {
+  var cands = (cleanupState && cleanupState.candidates) || [];
+  var issues = (cleanupState && cleanupState.audioIssues) || [];
+  var files = present.map(function (f) {
+    var base = basename(f.path).toLowerCase();
+    var cuts = [];
+    cands.forEach(function (c) {
+      if (!c.defaultOn || c.overlapsSpeaker) return;
+      var mine = (c.file && String(c.file).toLowerCase() === base) || (!c.file && c.speaker && f.name && String(f.name).toLowerCase() === String(c.speaker).toLowerCase());
+      if (mine && c.endSec > c.startSec) cuts.push({ s: c.startSec, e: c.endSec });
+    });
+    var gainDb = 0;
+    issues.forEach(function (is) {
+      var dB = Number(is.deltaDb) || 0;
+      if (is.kind === "speaker_imbalance" && is.speaker && f.name && String(is.speaker).toLowerCase() === String(f.name).toLowerCase() && dB !== 0 && Math.abs(dB) < MAX_LEVEL_FIX_DB) gainDb = -dB;
+    });
+    return { path: f.path, name: f.name, cuts: cuts, gainDb: gainDb };
+  });
+  // dead-air candidates are cross-speaker: the same range must leave every file so sync holds
+  var shared = [];
+  cands.forEach(function (c) { if (c.defaultOn && c.kind === "dead_air" && c.endSec > c.startSec) shared.push({ s: c.startSec, e: c.endSec }); });
+  if (shared.length) files.forEach(function (f) { f.cuts = f.cuts.filter(function (r) { return !shared.some(function (x) { return x.s === r.s && x.e === r.e; }); }).concat(shared); });
+  var nCuts = files.reduce(function (a, f) { return a + f.cuts.length; }, 0);
+  setStatus("Cutting " + nCuts + " range(s) into clean copies and writing the archive…", "", true);
+  return hands.buildAssembly(files).then(function (r) {
+    logChange("Built the audio assembly for " + DAW_LABEL + ": " + r.added + " speaker track(s)" + (nCuts ? ", " + nCuts + " pre-ticked cut(s) baked into the files" : ""));
+    files.forEach(function (f) { if (f.gainDb) { levelsApplied[f.name] = f.gainDb; logChange("Fix levels: " + (f.gainDb > 0 ? "+" : "") + f.gainDb.toFixed(1) + " dB baked into " + f.name); } });
+    cleanupChecks = {};
+    cands.forEach(function (c) { cleanupChecks[c._idx != null ? c._idx : cands.indexOf(c)] = false; });
+    renderCleanup();
+    var miss = missing.length ? " Missing from that folder: " + missing.join(", ") + "." : "";
+    setTimeout(function () {
+      afterHands(r, r.added + " speaker track(s) laid out" + (nCuts ? ", " + nCuts + " cut(s) and the level fix baked into the files" : "") + "." + miss);
+      $("cl-sub").textContent = "Assembly written. The pre-ticked cuts are already in the clean files, so the list above is unticked - import the archive, then export again if you want more.";
+    }, 0);
+  });
 }
 
 $("btn-assembly").onclick = buildAssembly;
@@ -1207,10 +1405,18 @@ function renderDeliverCard() {
   row.className = "d-row";
   var render = document.createElement("button");
   render.className = "btn-primary";
-  render.textContent = "Bounce + check";
+  render.textContent = FILE_BASED ? "Export mixdown + check" : "Bounce + check";
   render.disabled = busy || !can("render");
-  render.title = can("render") ? "Offline bounce of the mix to MP3 320 into a 'Fame renders' folder beside your session, then loudness, true peak and preflight." : "Needs Pro Tools connected.";
+  render.title = can("render")
+    ? (FILE_BASED ? "You run File > Export > Audio Mixdown into the exchange folder; the Plugin picks the file up and runs loudness, true peak and preflight." : "Offline bounce of the mix to MP3 320 into a 'Fame renders' folder beside your session, then loudness, true peak and preflight.")
+    : (FILE_BASED ? "Pick the exchange folder first." : "Needs " + DAW_LABEL + " connected.");
   render.onclick = function () {
+    if (FILE_BASED) {
+      confirmInPanel("Wait for your mixdown and run the checks?",
+        ["In " + DAW_LABEL + ": File > Export > Audio Mixdown, MP3 320 kbps (or WAV), saved into the exchange folder.", "The Plugin picks it up when the file finishes writing. Nothing is uploaded until you press Upload."],
+        "I'll export now", function () { prepareUpload(null); }, host);
+      return;
+    }
     confirmInPanel("Bounce the whole session to MP3 320 and run the checks?",
       ["Offline bounce of the main mix, saved next to your session in 'Fame renders'.", "Nothing is uploaded until you press Upload."],
       "Bounce", function () { prepareUpload(null); }, host);
@@ -1220,7 +1426,8 @@ function renderDeliverCard() {
   choose.className = "btn-ghost";
   choose.textContent = "Choose a bounced file…";
   choose.disabled = busy;
-  choose.title = "Already bounced with your own chain? Pick the file and it gets the same checks.";
+  choose.title = FILE_BASED ? "Exported somewhere else? Pick the file and it gets the same checks." : "Already bounced with your own chain? Pick the file and it gets the same checks.";
+  choose.textContent = FILE_BASED ? "Choose an exported file…" : "Choose a bounced file…";
   choose.onclick = function () {
     window.fame.pickFile({ title: "Choose the bounced audio master" }).then(function (p) { if (p) prepareUpload(p); });
   };
@@ -1333,10 +1540,10 @@ function uploadStage(stage, msg) {
 function prepareUpload(filePath) {
   if (!currentData || !upload.assetId) return;
   var start = filePath ? Promise.resolve(filePath) : (function () {
-    uploadStage("rendering", "Bouncing the mix to MP3 320… this runs offline, faster than real time.");
+    uploadStage("rendering", FILE_BASED ? "Waiting for your mixdown in the exchange folder…" : "Bouncing the mix to MP3 320… this runs offline, faster than real time.");
     track("render");
     return hands.render({ slug: currentData.slug }).then(function (r) {
-      logChange("Bounced the mix from Pro Tools (MP3 320 kbps)");
+      logChange(FILE_BASED ? "Exported the mixdown from " + DAW_LABEL : "Bounced the mix from " + DAW_LABEL + " (MP3 320 kbps)");
       return r.path;
     });
   })();
@@ -1407,6 +1614,13 @@ function doUpload() {
     })
     .catch(function (e) { uploadStage("ready", "Upload failed: " + e.message); });
 }
+
+// The adapter's own progress lines (Cubase: "export the mixdown into…",
+// "cutting file…") land in the Deliver card while it waits.
+window.fame.onNote(function (text) {
+  if (upload.stage === "rendering") uploadStage("rendering", text);
+  else setStatus(text, "", true);
+});
 
 window.fame.onUploadProgress(function (d) {
   var bar = document.getElementById("upload-progress");
@@ -1496,7 +1710,7 @@ function checkMusicBalance() {
     return side(speech).then(function (sv) {
       return side(beds).then(function (mv) {
         var sMed = FameCore.median(sv), mMed = FameCore.median(mv);
-        if (sMed == null || mMed == null) { music = { note: "Could not measure the levels on this timeline (are the files still where Pro Tools expects them?)." }; renderDeliverCard(); return; }
+        if (sMed == null || mMed == null) { music = { note: "Could not measure the levels on this timeline (are the files still where " + DAW_LABEL + " expects them?)." }; renderDeliverCard(); return; }
         var delta = mMed - sMed;
         music = {
           rows: ["Speech: " + sMed.toFixed(1) + " LUFS (median of " + sv.length + " clip(s))", "Music and effects: " + mMed.toFixed(1) + " LUFS (median of " + mv.length + " clip(s), " + Math.round(bedSecs) + "s total)"],
@@ -1547,8 +1761,9 @@ function applyComment(c, btn) {
         return hands.applyRippleCuts(seq).then(function (r) {
           track("apply_comment");
           logChange("Applied a client comment: cut \"" + String(ranges[0].text || c.text).slice(0, 60) + "\" (" + (c.authorName || "client") + ")");
-          setStatus("Cut applied for " + (c.authorName || "the client") + "'s comment - " + r.applied + " range(s)" + (r.fadesSkipped ? ", " + r.fadesSkipped : "") + ". Undo puts it back.", "ok");
           renderCleanup();
+          var msg = "Cut applied for " + (c.authorName || "the client") + "'s comment - " + r.applied + " range(s)" + (r.fadesSkipped ? ", " + r.fadesSkipped : "") + (r.pending ? "." : ". Undo puts it back.");
+          if (r.pending) setTimeout(function () { afterHands(r, msg); }, 0); else setStatus(msg, "ok");
         });
       });
   }).catch(function (e) { btn.disabled = false; setStatus(e.message, "error"); });
@@ -1557,7 +1772,7 @@ function applyComment(c, btn) {
 // ---------- diagnostics ----------
 
 $("btn-diag").onclick = function () {
-  setStatus("Reading everything Pro Tools answers…", "", true);
+  setStatus("Reading everything " + DAW_LABEL + " answers…", "", true);
   hands.diagnostics().then(function (d) {
     var host = $("cl-body");
     var old = document.getElementById("diag-box");
@@ -1567,7 +1782,7 @@ $("btn-diag").onclick = function () {
     box.className = "cl-group";
     var h = document.createElement("div");
     h.className = "cl-group-head";
-    h.textContent = "Diagnostics - Pro Tools " + (d.status.dawVersion || "not connected") + ", app " + APP_VERSION;
+    h.textContent = "Diagnostics - " + DAW_LABEL + " " + (d.status.dawVersion || (d.status.connected ? "" : "not connected")) + ", app " + APP_VERSION;
     box.appendChild(h);
     var summary = d.clips ? (d.clips.clips.length + " clip(s) on " + d.clips.tracks + " track(s), " + d.clips.sampleRate + " Hz, session \"" + d.clips.sessionName + "\"") : (d.error || d.status.reason || "");
     var s = document.createElement("div");
@@ -1598,6 +1813,7 @@ function showView(which) {
   $("footer").className = which === "main" ? "" : "hidden";
   $("btn-signout").className = which === "main" ? "linklike" : "linklike hidden";
   $("daw-bar").className = which === "main" ? $("daw-bar").className.replace("hidden", "") : "hidden";
+  if (which !== "main") $("daw-setup").className = "hidden";
   if (which === "main") {
     renderRecents();
     refreshDaw();
@@ -1624,7 +1840,7 @@ $("btn-signout").onclick = function () {
   clearSession();
   currentData = null;
   $("comments").innerHTML = "";
-  $("ep-name").textContent = "Pro Tools Plugin";
+  $("ep-name").textContent = DAW_LABEL + " Plugin";
   $("filters").className = "hidden";
   $("cleanup").className = "hidden";
   $("deliver").className = "hidden";
@@ -1699,10 +1915,35 @@ function checkForUpdate() {
     .catch(function () {});
 }
 
+// ---------- Which DAW? ----------
+// Chosen at sign-in, remembered by the main process (and mirrored in
+// localStorage so the picker shows it before the bridge answers).
+
+function setDaw(daw) {
+  DAW = daw;
+  DAW_LABEL = DAW_NAMES[daw] || daw;
+  INSTALL_URL = daw === "cubase" ? "https://review.fame.so/cubase" : "https://review.fame.so/protools";
+  try { localStorage.setItem("fame_daw", daw); } catch (e) {}
+  Array.prototype.forEach.call(document.querySelectorAll(".daw-opt"), function (b) {
+    b.className = "daw-opt" + (b.getAttribute("data-daw") === daw ? " active" : "");
+  });
+  $("ep-name").textContent = currentData ? (currentData.name || currentData.slug) : (DAW_LABEL + " Plugin");
+  document.title = "Fame " + DAW_LABEL + " Plugin";
+}
+Array.prototype.forEach.call(document.querySelectorAll(".daw-opt"), function (b) {
+  b.onclick = function () {
+    var d = b.getAttribute("data-daw");
+    window.fame.selectDaw(d).then(function (chosen) { setDaw(chosen || d); track("select_daw"); }).catch(function () { setDaw(d); });
+  };
+});
+
 // boot
 window.fame.info().then(function (info) {
   APP_VERSION = info.version;
   $("ver").textContent = "v" + APP_VERSION;
+  return window.fame.daw();
+}).then(function (daw) {
+  setDaw(daw || "protools");
   showView(readSession() ? "main" : "login");
   setTimeout(checkForUpdate, 2500);
 });

@@ -64,7 +64,8 @@ const CAPABILITIES = [
 /**
  * @typedef {Object} Hands
  * @property {string} daw                              "protools" | "cubase" - also the telemetry client name
- * @property {() => Promise<Status>} status            never rejects; { connected, appVersion, dawVersion, capabilities: {name: bool}, reason }
+ * @property {() => Promise<Status>} status            never rejects; { connected, appVersion, dawVersion, capabilities: {name: bool}, reason, fileBased?, dawLabel?, setup? }
+ * @property {(patch: Object) => Promise<Object>} [configure]   file-based adapters: change setup (exchange folder, MIDI port); resolves the new status
  * @property {() => Promise<ClipsInfo>} getClips
  * @property {(sec: number, play: boolean) => Promise<void>} jumpTo
  * @property {(ranges: {s:number,e:number}[]) => Promise<{applied:number, fades:number, fadesSkipped?:string}>} applyRippleCuts
@@ -83,8 +84,24 @@ const CAPABILITIES = [
  * @property {() => Promise<Object>} diagnostics   raw DAW answers for a support screenshot
  */
 
+/**
+ * File-based adapters (Cubase) cannot move the DAW themselves. Their
+ * methods resolve with the SAME shapes as above plus:
+ *   pending: true      the DAW has not done it yet
+ *   next: "..."        ONE line telling the editor what to do now
+ *   file: "/path"      the file the editor has to import / pick, when there is one
+ * and status() adds `fileBased: true`, `dawLabel`, and a `setup` object the
+ * UI renders as the setup card. The renderer shows `next` wherever it
+ * would show a result, never a button that does nothing.
+ *
+ * @typedef {Object} Pending
+ * @property {true} pending
+ * @property {string} next
+ * @property {string} [file]
+ */
+
 /** Which fixed interface version an adapter targets - bump when a method's contract changes. */
-const HANDS_VERSION = 1;
+const HANDS_VERSION = 2;
 
 function assertHands(h) {
   const required = ["daw", "status", "getClips", "jumpTo", "applyRippleCuts", "silenceRanges", "setTrackGainDb", "buildAssembly", "render", "measure", "diagnostics"];

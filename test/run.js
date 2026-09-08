@@ -1,6 +1,7 @@
-// `npm test` - the mapping rules against the real server fixtures, and the
-// Pro Tools adapter against the mock PTSL server over real gRPC. No Pro
-// Tools, no network. Lives in the repo on purpose (two harnesses were lost
+// `npm test` - the mapping rules against the real server fixtures, the
+// Pro Tools adapter against the mock PTSL server over real gRPC, and the
+// Cubase adapter against real track-archive exports + a folder + CoreMIDI
+// (test/cubase-cases.js). No DAW, no network. Lives in the repo on purpose (two harnesses were lost
 // to /tmp cleanup on the Premiere build).
 const path = require("path");
 const fs = require("fs");
@@ -244,6 +245,8 @@ async function main() {
     const st = await h3.status();
     assert(!st.connected && /not running/.test(st.reason), JSON.stringify(st));
   });
+
+  await require("./cubase-cases")(check, OUT, fixture);
 
   console.log("\n" + passed + " passed, " + failed + " failed");
   process.exit(failed ? 1 : 0);

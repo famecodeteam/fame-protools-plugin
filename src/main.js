@@ -13,15 +13,45 @@ const fs = require("fs");
 const https = require("https");
 const { URL } = require("url");
 const { ProToolsHands } = require("../hands/protools");
+const { CubaseHands } = require("../hands/cubase");
 const { assertHands } = require("../hands/interface");
 
 let win = null;
-const hands = assertHands(new ProToolsHands());
+
+// Which DAW: chosen at sign-in ("Which DAW?") and remembered on disk with
+// the Cubase setup (exchange folder, MIDI port). One adapter at a time.
+const SETTINGS_FILE = () => path.join(app.getPath("userData"), "fame-settings.json");
+function readSettings() {
+  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE(), "utf8")); } catch (e) { return {}; }
+}
+function writeSettings(patch) {
+  const s = Object.assign(readSettings(), patch);
+  try { fs.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true }); fs.writeFileSync(SETTINGS_FILE(), JSON.stringify(s, null, 2)); } catch (e) {}
+  return s;
+}
+
+let hands = null;
+function selectHands(daw) {
+  if (hands && hands.daw === daw) return hands;
+  if (hands && typeof hands.close === "function") { try { hands.close(); } catch (e) {} }
+  if (daw === "cubase") {
+    const st = readSettings();
+    hands = assertHands(new CubaseHands({ settings: st.cubase || {}, save: (c) => writeSettings({ cubase: c }) }));
+    hands.on("note", (text) => { if (win) win.webContents.send("hands:note", text); });
+  } else {
+    daw = "protools";
+    hands = assertHands(new ProToolsHands());
+  }
+  writeSettings({ daw });
+  if (win) win.setTitle(daw === "cubase" ? "Fame Cubase Plugin" : "Fame Pro Tools Plugin");
+  return hands;
+}
+selectHands(readSettings().daw || "protools");
 
 function createWindow() {
   win = new BrowserWindow({
     width: 460, height: 860, minWidth: 380, minHeight: 600,
-    title: "Fame Pro Tools Plugin",
+    title: hands.daw === "cubase" ? "Fame Cubase Plugin" : "Fame Pro Tools Plugin",
     backgroundColor: "#f8f1eb",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -42,6 +72,11 @@ HANDS_METHODS.forEach((m) => {
   });
 });
 ipcMain.handle("hands:daw", () => hands.daw);
+ipcMain.handle("hands:select", (ev, daw) => selectHands(daw).daw);
+ipcMain.handle("hands:configure", async (ev, patch) => {
+  try { return { ok: true, value: typeof hands.configure === "function" ? await hands.configure(patch) : await hands.status() }; } catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+ipcMain.handle("app:openPath", (ev, p) => shell.openPath(p));
 
 ipcMain.handle("app:info", () => ({ version: app.getVersion(), platform: process.platform, arch: process.arch }));
 

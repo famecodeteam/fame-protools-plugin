@@ -3,3 +3,5 @@ dist/
 .DS_Store
 *.log
 test/out/
+.claude/
+*.fame-roundtrip.xml

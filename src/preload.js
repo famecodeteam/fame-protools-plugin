@@ -17,6 +17,10 @@ const hands = {};
 contextBridge.exposeInMainWorld("fame", {
   hands,
   daw: () => ipcRenderer.invoke("hands:daw"),
+  selectDaw: (daw) => ipcRenderer.invoke("hands:select", daw),
+  configure: (patch) => unwrap(ipcRenderer.invoke("hands:configure", patch)),
+  onNote: (cb) => { ipcRenderer.on("hands:note", (ev, text) => cb(text)); },
+  openPath: (p) => ipcRenderer.invoke("app:openPath", p),
   info: () => ipcRenderer.invoke("app:info"),
   pickFile: (opts) => ipcRenderer.invoke("app:pickFile", opts),
   pickFolder: (opts) => ipcRenderer.invoke("app:pickFolder", opts),

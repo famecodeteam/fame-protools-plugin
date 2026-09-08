@@ -2,8 +2,8 @@
 <body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
 <h1>Fame Pro Tools Plugin Working Procedure</h1>
 <p><i>Everything the Plugin can do, in plain English - what each button does, where its information comes from, and what it will never do without you clicking a button. It is the Pro Tools counterpart to the Fame Reaper Plugin and the Fame Premiere Plugin: same brain on the server, Pro Tools' hands on the session.</i></p>
-<p><b>Version:</b> 1.0.1 (8 September 2026). This document is updated in place - the link never changes.</p>
-<p><b>Install:</b> <a href="https://review.fame.so/protools">review.fame.so/protools</a>. Needs Pro Tools 2025.10 or newer, any tier.</p>
+<p><b>Version:</b> 1.1.0 (8 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Install:</b> <a href="https://review.fame.so/protools">review.fame.so/protools</a>. Needs Pro Tools 2025.10 or newer, any tier. <b>Cubase editors use the same app</b> - see the Cubase chapter at the end.</p>
 
 <h2>How the three systems fit together</h2>
 <ul>
@@ -57,4 +57,32 @@
 
 <h2>When something looks wrong</h2>
 <p>Press <b>Diagnostics</b> at the bottom, then <b>Copy for Tom</b> and paste it to Tom. It contains exactly what Pro Tools answered (version, tracks, clips) - that is what makes a fix quick. The first real sessions will settle a few details the build could not (how Pro Tools reports a trimmed clip's start, the fade preset lookup), so the first week's feedback is the spec.</p>
+<h1>Cubase chapter</h1>
+<p><i>Same app, same brain, same buttons - but Cubase has no scripting door to the arrangement (the MIDI Remote API is for controllers, the project file is binary, a plug-in in the mixer cannot touch clips). So on Cubase the Plugin works <b>through files</b>: you export tracks, it writes them back edited, you import them; jump-to-comment goes over a MIDI cable. Nothing moves in Cubase by itself, and every step in the app says what to do next.</i></p>
+
+<h2>One-time setup (Cubase)</h2>
+<ol>
+<li>Install from <a href="https://review.fame.so/cubase">review.fame.so/cubase</a> (the same app), open it and choose <b>Cubase</b> under "Which DAW?" before signing in. It remembers.</li>
+<li><b>Pick the Fame exchange folder</b> in the setup card at the top of the app. Any folder; Cubase exports into it, the Plugin reads from it and writes its own files next to them.</li>
+<li><b>MIDI:</b> in Cubase, <b>Transport &gt; Project Synchronization Setup &gt; Machine Control</b>, tick <b>MMC Slave Active</b>, set <b>MMC Input</b> to <b>Fame Plugin</b>. On Mac that port exists whenever the app is open. On Windows install loopMIDI (free), add one port, pick it in the app's setup card and as Cubase's MMC Input.</li>
+</ol>
+
+<h2>Reading your timeline (Cubase)</h2>
+<p>Select the speaker tracks, <b>File &gt; Export &gt; Selected Tracks</b>, save the .xml into the exchange folder, press <b>Refresh</b>. The cleanup list maps onto that export ("522 of 525 found on your timeline"). Export again after you re-arrange. Keep the speaker tracks on the <b>Linear</b> time base (the clock icon on the track) and <b>dissolve audio parts</b> first - the Plugin refuses both with that exact instruction rather than guessing.</p>
+
+<h2>Cuts, silences and Fix levels (Cubase)</h2>
+<p>Tick and press <b>Apply</b> as usual. The Plugin writes a new archive next to your export (for example <i>DMS27 speakers - Fame cut.xml</i>) and shows the next step: <b>File &gt; Import &gt; Track Archive</b>, pick that file. The new tracks land under your originals with every cut rippled and 10 ms fades on each seam; <b>your originals are the undo</b> - mute or delete them when you are happy. Silence writes a "- Fame silenced" archive (a gap on that speaker's track only). Fix levels writes the difference into the tracks' event volume when the export carries one, otherwise it tells you the exact fader value to set.</p>
+<p><b>Fades:</b> the Plugin copies the shape of a fade Cubase itself wrote. If your export carries no fade at all, put any short fade on one event before exporting and every seam gets a 10 ms fade; otherwise the cut still lands and the app says fades were skipped.</p>
+
+<h2>Deliver (Cubase)</h2>
+<p>Press <b>Export mixdown + check</b>, then in Cubase <b>File &gt; Export &gt; Audio Mixdown</b> (MP3 320 or WAV) into the exchange folder. The app watches the folder, picks the file up when it finishes writing, measures loudness and true peak, runs preflight and offers <b>Upload as vN</b>. Exported somewhere else? <b>Choose an exported file</b> gives it the same checks.</p>
+
+<h2>Build audio assembly (Cubase)</h2>
+<p>Writes one track per speaker referencing the raw files from the folder on your disk, with the pre-ticked cleanup cuts and the level fix <b>already baked into clean copies of the files</b> (ffmpeg, 10 ms fades at every seam, identical cut list on every speaker so sync holds). Import that one archive and you are editing a cleaned 1:1 timeline; the cleanup list unticks itself because those cuts are already in the audio.</p>
+
+<h2>While it waits</h2>
+<p>A file-based flow looks broken while it waits for a file. It is not: every waiting state in the app is a line beginning <b>Next:</b> with the exact Cubase menu to use and a <b>Show file</b> button. If a line ever does not say what to do next, that is a bug - tell Tom.</p>
+
+<h2>First week on Cubase</h2>
+<p>The archive reader was built on real Cubase exports of marker tracks plus an assumed shape for audio events. Your first export is the fixture: if the app says it does not recognise the events, press <b>Diagnostics</b>, <b>Copy for Tom</b> and send it - the fix is a field name, not a rebuild.</p>
 </body></html>

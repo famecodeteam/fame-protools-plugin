@@ -1,8 +1,8 @@
 {
   "name": "fame-protools-plugin",
   "productName": "Fame Pro Tools Plugin",
-  "version": "1.0.1",
-  "description": "Fame Pro Tools Plugin - Asset Review Tool comments and the cleanup pass beside Pro Tools, driven through the Pro Tools Scripting SDK",
+  "version": "1.1.0",
+  "description": "Fame Pro Tools Plugin - Asset Review Tool comments and the cleanup pass beside Pro Tools (Scripting SDK) or Cubase (track archives + MMC)",
   "main": "src/main.js",
   "private": true,
   "license": "UNLICENSED",
@@ -17,6 +17,7 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.12.2",
     "@grpc/proto-loader": "^0.7.13",
+    "@julusian/midi": "^3.8.1",
     "electron-updater": "^6.3.9",
     "ffmpeg-static": "^5.2.0"
   },
@@ -35,7 +36,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "node_modules/ffmpeg-static/**"
+      "node_modules/ffmpeg-static/**",
+      "node_modules/@julusian/midi/**"
     ],
     "mac": {
       "category": "public.app-category.music",

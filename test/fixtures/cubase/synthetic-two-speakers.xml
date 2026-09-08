@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<tracklist2>
+    <list name="track" type="obj">
+        <obj ID="140100000000001" class="MAudioTrackEvent">
+            <int name="Flags" value="1"/>
+            <float name="Start" value="0"/>
+            <float name="Length" value="1500"/>
+            <obj ID="140100000000002" class="MListNode" name="Node">
+                <string name="Name" value="Denis" wide="true"/>
+                <member name="Domain">
+                    <int name="Type" value="1"/>
+                    <float name="Period" value="1"/>
+                </member>
+                <list name="Events" type="obj">
+                    <obj ID="140100000000003" class="MAudioEvent">
+                        <int name="Flags" value="0"/>
+                        <float name="Start" value="2"/>
+                        <float name="Length" value="1498"/>
+                        <float name="Offset" value="10"/>
+                        <int name="Priority" value="0"/>
+                        <obj ID="140100000000004" class="MAudioClip" name="AudioClip">
+                            <string name="Name" value="riverside_denis_vozian_raw-audio_sourcepass_mcoe stu_0165" wide="true"/>
+                            <obj ID="140100000000005" class="MMediaFile" name="File">
+                                <string name="Path" value="/Users/anton/Fame/DMS27/Audio/riverside_denis_vozian_raw-audio_sourcepass_mcoe stu_0165.wav" wide="true"/>
+                            </obj>
+                        </obj>
+                        <member name="FadeIn">
+                            <float name="Length" value="0"/>
+                            <int name="Type" value="0"/>
+                        </member>
+                        <member name="FadeOut">
+                            <float name="Length" value="0"/>
+                            <int name="Type" value="0"/>
+                        </member>
+                        <float name="Volume" value="1"/>
+                    </obj>
+                </list>
+            </obj>
+            <member name="Additional Attributes">
+                <int name="Eths" value="-260498236"/>
+            </member>
+            <obj ID="140100000000006" class="MTrack" name="Track Device">
+                <int name="Connection Type" value="2"/>
+            </obj>
+        </obj>
+        <obj ID="140100000000011" class="MAudioTrackEvent">
+            <int name="Flags" value="1"/>
+            <float name="Start" value="0"/>
+            <float name="Length" value="1510"/>
+            <obj ID="140100000000012" class="MListNode" name="Node">
+                <string name="Name" value="Nathan" wide="true"/>
+                <member name="Domain">
+                    <int name="Type" value="1"/>
+                    <float name="Period" value="1"/>
+                </member>
+                <list name="Events" type="obj">
+                    <obj ID="140100000000013" class="MAudioEvent">
+                        <int name="Flags" value="0"/>
+                        <float name="Start" value="0"/>
+                        <float name="Length" value="1510"/>
+                        <float name="Offset" value="0"/>
+                        <int name="Priority" value="0"/>
+                        <obj ID="140100000000014" class="MAudioClip" name="AudioClip">
+                            <string name="Name" value="riverside_nathan_taylor_raw-audio_sourcepass_mcoe stu_0164" wide="true"/>
+                            <obj ID="140100000000015" class="MMediaFile" name="File">
+                                <string name="Path" value="/Users/anton/Fame/DMS27/Audio/riverside_nathan_taylor_raw-audio_sourcepass_mcoe stu_0164.wav" wide="true"/>
+                            </obj>
+                        </obj>
+                        <member name="FadeIn">
+                            <float name="Length" value="0"/>
+                            <int name="Type" value="0"/>
+                        </member>
+                        <member name="FadeOut">
+                            <float name="Length" value="0"/>
+                            <int name="Type" value="0"/>
+                        </member>
+                        <float name="Volume" value="1"/>
+                    </obj>
+                </list>
+            </obj>
+            <member name="Additional Attributes">
+                <int name="Eths" value="-260498236"/>
+            </member>
+            <obj ID="140100000000016" class="MTrack" name="Track Device">
+                <int name="Connection Type" value="2"/>
+            </obj>
+        </obj>
+        <obj ID="140100000000021" class="MAudioTrackEvent">
+            <int name="Flags" value="1"/>
+            <float name="Start" value="0"/>
+            <float name="Length" value="1510"/>
+            <obj ID="140100000000022" class="MListNode" name="Node">
+                <string name="Name" value="Music" wide="true"/>
+                <member name="Domain">
+                    <int name="Type" value="1"/>
+                    <float name="Period" value="1"/>
+                </member>
+                <list name="Events" type="obj">
+                    <obj ID="140100000000023" class="MAudioEvent">
+                        <int name="Flags" value="0"/>
+                        <float name="Start" value="0"/>
+                        <float name="Length" value="60"/>
+                        <float name="Offset" value="0"/>
+                        <obj ID="140100000000024" class="MAudioClip" name="AudioClip">
+                            <string name="Name" value="bed" wide="true"/>
+                            <obj ID="140100000000025" class="MMediaFile" name="File">
+                                <string name="Path" value="/Users/anton/Fame/music/bed.wav" wide="true"/>
+                            </obj>
+                        </obj>
+                        <bin name="audioComponent">46616246020000000F00000044656661756C742053657474696E67</bin>
+                    </obj>
+                    <obj ID="140100000000026" class="MAudioEvent">
+                        <int name="Flags" value="0"/>
+                        <float name="Start" value="1400"/>
+                        <float name="Length" value="110"/>
+                        <float name="Offset" value="0"/>
+                        <obj ID="140100000000027" class="MAudioClip" name="AudioClip">
+                            <string name="Name" value="bed" wide="true"/>
+                            <obj ID="140100000000028" class="MMediaFile" name="File">
+                                <string name="Path" value="/Users/anton/Fame/music/bed.wav" wide="true"/>
+                            </obj>
+                        </obj>
+                    </obj>
+                </list>
+            </obj>
+            <obj ID="140100000000029" class="MTrack" name="Track Device">
+                <int name="Connection Type" value="2"/>
+            </obj>
+        </obj>
+    </list>
+    <obj ID="140100000000100" class="ExternalRouting" name="ExternalRouting">
+        <member name="Audio"/>
+    </obj>
+    <obj ID="140100000000101" class="PArrangeSetup" name="Setup">
+        <member name="Start">
+            <float name="Time" value="0"/>
+            <member name="Domain">
+                <int name="Type" value="1"/>
+                <float name="Period" value="1"/>
+            </member>
+        </member>
+        <member name="Length">
+            <float name="Time" value="1510"/>
+            <member name="Domain">
+                <int name="Type" value="1"/>
+                <float name="Period" value="1"/>
+            </member>
+        </member>
+        <int name="BarOffset" value="0"/>
+        <int name="FrameType" value="3"/>
+        <int name="TimeType" value="0"/>
+        <float name="SampleRate" value="48000"/>
+        <int name="SampleSize" value="24"/>
+    </obj>
+</tracklist2>

@@ -1,0 +1,39 @@
+{
+  "_about": "Where each fact about a Cubase track archive lives in the XML. 'confirmed' entries were read off real Cubase exports (DAWFileKit's three test archives, Cubase 12-13, 48 kHz); 'assumed' entries are the audio-event shape that only Anton's first export can settle - the reader tolerates their absence and Diagnostics prints what it actually found.",
+  "root": { "tag": "tracklist2", "status": "confirmed" },
+  "trackList": { "name": "track", "status": "confirmed" },
+  "trackClasses": {
+    "audio": ["MAudioTrackEvent"],
+    "marker": ["MMarkerTrackEvent"],
+    "folder": ["MFolderTrackEvent"],
+    "midi": ["MMidiTrackEvent"],
+    "status": "audio assumed; marker confirmed"
+  },
+  "node": { "class": "MListNode", "name": "Node", "status": "confirmed" },
+  "trackName": { "name": "Name", "status": "confirmed" },
+  "domain": { "member": "Domain", "type": "Type", "linear": 1, "musical": 0, "period": "Period", "status": "confirmed" },
+  "events": { "list": "Events", "status": "confirmed" },
+  "eventClasses": { "audio": ["MAudioEvent"], "part": ["MAudioPartEvent"], "status": "assumed" },
+  "event": {
+    "start": "Start",
+    "length": "Length",
+    "offset": "Offset",
+    "name": "Name",
+    "flags": "Flags",
+    "muteFlagBit": null,
+    "fadeIn": "FadeIn",
+    "fadeOut": "FadeOut",
+    "fadeLength": "Length",
+    "volume": "Volume",
+    "status": "Start/Length confirmed on marker events (same base class); Offset, fades, Flags, Volume assumed"
+  },
+  "clip": { "classes": ["MAudioClip", "MAudioClipEvent"], "pathKeys": ["Path", "File", "FileName", "Filename"], "status": "assumed" },
+  "trackVolume": { "keys": ["Volume"], "status": "assumed" },
+  "setup": {
+    "class": "PArrangeSetup", "name": "Setup", "sampleRate": "SampleRate", "frameType": "FrameType",
+    "start": "Start", "length": "Length", "time": "Time", "status": "confirmed"
+  },
+  "tempo": { "class": "MTempoTrackEvent", "list": "TempoEvent", "eventClass": "MTempoEvent", "bpm": "BPM", "ppq": "PPQ", "ppqPerQuarter": 480, "status": "confirmed" },
+  "frameTypes": { "2": 24, "3": 25, "4": 29.97, "5": 30, "6": 29.97, "7": 30, "12": 23.976, "13": 24.98, "14": 50, "15": 59.94, "16": 60, "status": "confirmed (DAWFileKit table)" },
+  "dropFrameTypes": [6, 7]
+}
