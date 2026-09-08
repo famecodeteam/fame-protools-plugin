@@ -1,0 +1,96 @@
+<html><head><meta charset="utf-8"><title>Fame Cubase Plugin Working Procedure</title></head>
+<body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
+<h1>Fame Cubase Plugin Working Procedure</h1>
+<p><i>Everything the Plugin can do on Cubase, in plain English - what each button does, where its information comes from, what it writes for you, and what it will never do without you clicking a button. It is the Cubase counterpart to the Fame Reaper Plugin and the Fame Pro Tools Plugin: same brain on the server, Cubase's hands on your project.</i></p>
+<p><b>Version:</b> 1.1.0 (8 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Install:</b> <a href="https://review.fame.so/cubase">review.fame.so/cubase</a>. Cubase Pro, Artist or Elements on Mac or Windows. The same app also drives Pro Tools; you choose Cubase once at sign-in.</p>
+
+<h2>The one thing to understand first</h2>
+<p>Cubase has no scripting door to the arrangement - the MIDI Remote API is for hardware controllers, the project file is a sealed binary, and a plug-in in the mixer cannot touch clips. So the Plugin works <b>through files</b>, and nothing moves in Cubase by itself:</p>
+<ul>
+<li><b>Reading your timeline</b> = you export the speaker tracks as a track archive (an .xml file) into a folder the Plugin watches.</li>
+<li><b>Cuts, silences and level fixes</b> = the Plugin writes an edited copy of that archive; you import it. Your original tracks stay put - they are your undo.</li>
+<li><b>Jumping to a comment</b> = the Plugin sends MIDI Machine Control (the same messages a hardware transport sends) down a MIDI cable Cubase listens to.</li>
+<li><b>Rendering</b> = you run Export Audio Mixdown into the same folder; the Plugin picks the file up when it finishes writing.</li>
+</ul>
+<p>Every waiting state in the app is a line starting <b>Next:</b> with the exact Cubase menu to use and a <b>Show file</b> button. If a line ever does not tell you what to do next, that is a bug - tell Tom.</p>
+
+<h2>How the three systems fit together</h2>
+<ul>
+<li><b>Team Portal</b> - holds each client's rules: cleanup style (how aggressive on fillers, whether to cut repeats, how long a pause is too long), the AM's notes, and who is on the team. It <b>feeds the rules into the Plugin</b> automatically.</li>
+<li><b>Fame Cubase Plugin</b> - a small app beside Cubase. It reads your exports, writes archives back, moves the transport, measures your mixdown and uploads it.</li>
+<li><b>Asset Review Tool</b> - where clients listen, comment and approve. <b>Comments flow into</b> the Plugin, and <b>your uploads flow out</b> to it.</li>
+</ul>
+<p>You never have to open the Team Portal yourself. If a client's cleanup style looks wrong, tell your <b>PM or AM</b>; they edit it in the Team Portal and the Plugin picks the change up on the next Analyze.</p>
+
+<h2>One-time setup</h2>
+<ol>
+<li>Install the app from <a href="https://review.fame.so/cubase">review.fame.so/cubase</a>. On Mac, the first time, right-click the app and choose <b>Open</b> (macOS asks once because the build is not notarised). Open it, choose <b>Cubase</b> under "Which DAW?", then sign in with your review.fame.so email and password. The choice is remembered.</li>
+<li><b>Pick the Fame exchange folder</b> - the setup card at the top of the app, <b>Pick folder</b>. Any folder works; one per machine is fine (for example <i>Documents/Fame exchange</i>). Cubase exports into it, the Plugin reads from it and writes its own files next to them.</li>
+<li><b>Let Cubase follow the Plugin's transport.</b> In Cubase: <b>Transport &gt; Project Synchronization Setup</b>, open the <b>Machine Control</b> page, tick <b>MMC Slave Active</b>, and set <b>MMC Input</b> to <b>Fame Plugin</b>. Leave MMC Device ID at its default (the Plugin addresses all devices).
+  <ul>
+  <li><b>Mac:</b> the port called <i>Fame Plugin</i> exists whenever the app is open - nothing to enable in Audio MIDI Setup.</li>
+  <li><b>Windows:</b> Windows cannot create MIDI ports from an app. Install <a href="https://www.tobias-erichsen.de/software/loopmidi.html">loopMIDI</a> (free), press + to add one port, then pick that port in the Plugin's setup card (the "MIDI to Cubase" dropdown) and as Cubase's MMC Input.</li>
+  </ul></li>
+<li>Test it: load any episode, click a timestamp. Cubase's cursor should move there and start playing. If nothing moves, check MMC Slave Active is ticked and the input port matches what the setup card says it is "sending on".</li>
+</ol>
+
+<h2>Loading an episode</h2>
+<p>Paste any link to the episode - the client review page, the /ve link from the Trello card, or the bare slug - and press <b>Load</b>. No link? Type the client, show or guest name in the search box. Recent episodes sit as chips under the box.</p>
+<p>The <b>episode brief</b> shows the show, guest, team, the AM's house notes and this client's watch-outs (mined from their past comments). Shot rules are for video editors and are not shown.</p>
+
+<h2>Comments</h2>
+<p>Every client and QA comment on the episode's assets, audio asset first, newest two versions each. Click a timestamp and Cubase jumps the cursor there and plays (over MMC). Filters: All / Client / QA, and Hide resolved.</p>
+<p>A comment marked <b>cuttable</b> is one the server could turn into an exact cut ("delete the um at 3:20"). Its <b>Apply</b> button writes that cut into an archive for you to import - it refuses rather than guessing, and jumps you there instead when it can't be sure.</p>
+
+<h2>Reading your timeline: the export step</h2>
+<ol>
+<li>In Cubase, select the speaker audio tracks (the raw recordings, one per speaker - not the music bed).</li>
+<li><b>File &gt; Export &gt; Selected Tracks</b>, save the .xml into the exchange folder. Any name.</li>
+<li>Press <b>Refresh</b> in the app. The cleanup list maps onto that export - "522 of 525 found on your timeline".</li>
+</ol>
+<p>Do that again whenever you re-arrange; the app always reads the newest archive in the folder and says which one ("Timeline read from DMS27 speakers.xml"). Two rules for the export, both enforced with the exact fix in the app rather than a guess:</p>
+<ul>
+<li>Keep the speaker tracks on the <b>Linear</b> time base (the clock icon in the track's header). A track on the musical time base under a tempo <b>ramp</b> is refused: switch it to Linear and export again.</li>
+<li><b>Dissolve audio parts</b> first (select the part, <b>Audio &gt; Dissolve Part</b>). The Plugin edits events, not parts.</li>
+</ul>
+
+<h2>Cleanup pass</h2>
+<p><b>Analyze audio</b> transcribes the episode's raw recordings from its Drive folder word for word (fillers included) and lists fillers, repeats, dead air, breaths, mouth clicks and "maybe" words. The analysis belongs to the <b>episode</b>: if the video editor already ran it, it appears at once.</p>
+<p>Everything is mapped onto <b>your</b> export through the events that use each recording - by file name, by the Riverside speaker name, or by the speaker's name anywhere in the event or track name - so a trimmed, moved or renamed event still lands right.</p>
+<ul>
+<li><b>Tick boxes and word chips</b> decide what goes. The client's style pre-ticks the safe defaults; long fillers get a "long" badge.</li>
+<li><b>Apply N cuts</b> writes a new archive - for example <i>DMS27 speakers - Fame cut 20260908-1140.xml</i> - with each ticked range ripple-cut from every exported track, back to front, later material pulled up, and a 10 ms fade on every seam. Then the app shows <b>Next: File &gt; Import &gt; Track Archive</b>, choose that file. The cut tracks land under your originals, named "<i>Denis - Fame cut</i>". Listen, then mute or delete the originals. <b>Undo = keep the originals.</b></li>
+<li><b>Silence instead</b> (breaths, clicks, spoken-over fillers) writes a "- Fame silenced" archive: the range becomes a gap on that speaker's own track(s) only - no ripple, project length unchanged, fades on both edges. Use it wherever a ripple cut would clip the other person.</li>
+<li><b>Spoken over</b> items can only be silenced, never cut - cutting would clip the other speaker's words.</li>
+<li><b>Fades:</b> the Plugin copies the shape of a fade Cubase itself wrote in your export. If the export carries no fade at all, put any short fade on one event before exporting and every seam gets a 10 ms fade. Otherwise the cut still lands and the app says fades were skipped.</li>
+<li><b>Audio issues</b> lists dropouts, clicks and level problems the analysis found. <b>Fix levels</b> next to a speaker-imbalance warning writes the difference into the exported tracks' event volume and hands you a "- Fame levelled" archive to import; if the export carries no event volume, it tells you the exact fader value to set instead. It refuses over 30 dB - that is a broken or bleeding mic, not a fader problem.</li>
+</ul>
+<p>After importing, export the new tracks again before applying more, so the app maps onto what Cubase now has.</p>
+
+<h2>Build audio assembly (the fast path)</h2>
+<p><b>Build audio assembly</b> is the quickest way to a clean first edit. It reads the raw recordings from the folder on your disk that your export points at (or asks you to pick it; it never downloads from Drive), then writes:</p>
+<ul>
+<li>a <b>clean copy of each speaker's file</b> with the pre-ticked cleanup cuts and the level fix already baked in - the same cut list on every speaker so sync holds, 10 ms fades at every seam (folder "<i>Fame assembly &lt;date&gt;</i>" inside the exchange folder), and</li>
+<li><b>one track archive</b> with one named track per speaker referencing those clean files from 0.</li>
+</ul>
+<p>Import that one archive (<b>File &gt; Import &gt; Track Archive</b>) and you are editing a cleaned 1:1 timeline. The cleanup list unticks itself because those cuts are already in the audio. Missing files are named, never assembled around.</p>
+
+<h2>Deliver</h2>
+<ol>
+<li><b>Export mixdown + check</b>: press it, then in Cubase <b>File &gt; Export &gt; Audio Mixdown</b> - MP3 320 kbps (or WAV), the whole project, saved into the exchange folder. The app watches the folder, picks the file up the moment it finishes writing, measures integrated loudness and true peak on your machine, and runs preflight (Fame's -14 LUFS target, true peak, duration, stereo). Exported somewhere else already? <b>Choose an exported file</b> gives it the same checks.</li>
+<li><b>Check comments</b> lists open comments that still look unaddressed: cuttable ones are checked mechanically against your latest export; judgement ones are counted for a last look. Advisory only.</li>
+<li><b>Check music balance</b> measures your speech events and everything else the same way (from the files your export references) and warns when the music sits 4 dB or more over the conversation - the "music is too loud" complaint, caught before you export.</li>
+<li><b>Upload as vN</b> sends the file straight from your machine to Drive and records it as the audio asset's next version, internal-only, with a what-changed note for the PM listing every action the Plugin took. QA runs on it automatically.</li>
+</ol>
+
+<h2>What it will never do without you</h2>
+<ul>
+<li>It never changes your Cubase project. It writes new files next to your exports; you decide what to import, and the originals stay as your undo.</li>
+<li>It never uploads until you press Upload, and every action shows an in-app confirmation first.</li>
+<li>It never touches Drive to read media - the raw files come from your disk.</li>
+</ul>
+
+<h2>When something looks wrong</h2>
+<p>Press <b>Diagnostics</b> at the bottom, then <b>Copy for Tom</b> and paste it to Tom. It contains what the Plugin found in your export (tracks, events, the fields it recognised), the MIDI port and the last MMC messages sent. The archive reader was built on real Cubase exports of marker tracks plus an assumed shape for audio events, so your first export is the fixture: if the app says it does not recognise the events, the fix is a field name, not a rebuild, and Diagnostics is exactly what makes it a ten-minute fix.</p>
+</body></html>
