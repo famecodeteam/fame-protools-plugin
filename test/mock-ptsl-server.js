@@ -34,6 +34,10 @@ class MockSession {
     this.folder = opts.folder || path.join(__dirname, "out", "session");
     this.version = opts.version || { major: 2025, minor: 10, revision: 0 };
     this.fadePresets = opts.fadePresets || ["Fame 10ms"];
+    // Real Pro Tools refuses GetTrackPlaylists / GetPlaylistElements unless
+    // Avid has granted the caller the private API. Default to refusing, the
+    // way every editor's install behaves.
+    this.privateApi = opts.privateApi === true;
     this.tracks = [];
     this.files = {};
     this.nextId = 1;
@@ -76,6 +80,11 @@ class MockSession {
     }));
   }
 
+  // The name Pro Tools gives a clip in both the clip list and the EDL.
+  clipName(e) {
+    return path.basename(this.files[e.fileId] || "clip").replace(/\.[^.]+$/, "") + "-" + String(e.id).split("-")[1];
+  }
+
   handle(cmd, body) {
     this.log.push(cmd);
     // Real Pro Tools (2026.0) refuses a request that carries two ways of
@@ -86,6 +95,12 @@ class MockSession {
       const a = body[pair[0]], b = body[pair[1]];
       const has = (v) => Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== "");
       if (has(a) && has(b)) throw fail("PT_UnknownError", "Only one of '" + pair[0] + "' and '" + pair[1] + "' must be defined");
+    }
+    // The private-API gate comes AFTER parameter validation - that is the
+    // order the real server showed: a two-selector request was refused for
+    // the selectors first, and only once fixed did it name the gate.
+    if (!this.privateApi && (cmd === "GetTrackPlaylists" || cmd === "GetPlaylistElements")) {
+      throw fail("PT_UnknownError", "Private API has not been enabled in this session.");
     }
     if (!this.registered && cmd !== "HostReadyCheck" && cmd !== "RegisterConnection") throw fail("PT_UnknownError", "not registered");
     const sr = this.sampleRate;
@@ -126,8 +141,8 @@ class MockSession {
         needFloor(6);
         const clips = [];
         this.tracks.forEach((t) => t.elements.forEach((e) => clips.push({
-          file_id: e.fileId, clip_id: e.id, clip_full_name: path.basename(this.files[e.fileId] || "clip").replace(/\.[^.]+$/, "") + "-" + e.id.split("-")[1],
-          clip_root_name: path.basename(this.files[e.fileId] || ""), clip_type: "ClipType_Audio",
+          file_id: e.fileId, clip_id: e.id, clip_full_name: this.clipName(e),
+          clip_root_name: path.basename(this.files[e.fileId] || ""), clip_type: "ClipType_Audio", is_online: true,
           start_point: { position: 0, time_type: "BTType_Samples" }, end_point: { position: e.end - e.start, time_type: "BTType_Samples" },
           src_start_point: { position: e.srcStart, time_type: "BTType_Samples" }, src_end_point: { position: e.srcStart + (e.end - e.start), time_type: "BTType_Samples" },
         })));
@@ -193,6 +208,40 @@ class MockSession {
         if (r.status !== 0) throw fail("OS_WritePermissions", "mock ffmpeg failed: " + (r.stderr || r.error));
         this.exports.push({ out, body });
         return {};
+      }
+      case "ExportSessionInfoAsText": {
+        // Pro Tools' own layout: a header, then a TRACK LISTING of
+        // tab-separated events per track. Times honour the requested unit.
+        const asSamples = /Samples/i.test(String(body.track_offset_options || "Samples"));
+        const t2 = (samples) => (asSamples ? String(samples) : (samples / sr).toFixed(3));
+        const out = [
+          "SESSION NAME:\t" + this.name,
+          "SAMPLE RATE:\t" + sr.toFixed(6),
+          "BIT DEPTH:\t24-bit",
+          "SESSION START TIMECODE:\t00:00:00:00",
+          "# OF AUDIO TRACKS:\t" + this.tracks.length,
+          "",
+          "F I L E S  I N  S E S S I O N",
+          "",
+        ];
+        Object.keys(this.files).forEach((fid) => out.push(path.basename(this.files[fid]) + "\t" + this.files[fid]));
+        out.push("", "T R A C K  L I S T I N G", "");
+        for (const t of this.tracks) {
+          if (!/Audio/i.test(String(t.type))) continue;
+          out.push("TRACK NAME:\t" + t.name);
+          out.push("COMMENTS:\t");
+          out.push("USER DELAY:\t0 Samples");
+          out.push("STATE: ");
+          out.push(["CHANNEL", "EVENT", "CLIP NAME", "START TIME", "END TIME", "DURATION", "TIMESTAMP", "STATE"].join("\t"));
+          t.elements.forEach((e, i) => {
+            out.push([
+              "1", String(i + 1), this.clipName(e), t2(e.start), t2(e.end), t2(e.end - e.start),
+              t2(e.srcStart), e.muted ? "Muted" : "Unmuted",
+            ].join("\t"));
+          });
+          out.push("");
+        }
+        return { session_info: out.join("\n") };
       }
       case "GetTaskStatus": return { task_id: body.task_id, status: "Completed", progress: 100 };
       case "Import": {

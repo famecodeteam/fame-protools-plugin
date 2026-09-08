@@ -170,6 +170,48 @@ async function main() {
     assert.strictEqual(path.basename(d.path), denisFile);
     assert(d.name.indexOf("riverside_denis_vozian") === 0);
   });
+  await check("reads the timeline through the public text export when the private API is refused", async () => {
+    // Karthik's real install: GetTrackPlaylists answers "Private API has
+    // not been enabled in this session." Every other test in this file
+    // runs through this same fallback, because the mock refuses by
+    // default - which is how an editor's Pro Tools actually behaves.
+    const info = await hands.getClips();
+    assert.strictEqual(info.raw.readVia, "session text export", info.raw.readVia);
+    assert.deepStrictEqual(info.readErrors, [], JSON.stringify(info.readErrors));
+    assert(info.clips.length >= 4, info.clips.length + " clips");
+    assert(info.raw.sessionTextBytes > 200, "no session text came back");
+  });
+  await check("uses the playlist route instead when the private API is granted", async () => {
+    const granted = new MockSession({ folder: path.join(OUT, "granted"), privateApi: true });
+    const f1 = granted.addFile(path.join(raw, denisFile));
+    granted.addTrack("Denis", [{ start: 2, end: 1500, fileId: f1, srcStart: 10 }]);
+    const s2 = await startMockServer(granted);
+    const h2 = new ProToolsHands({ address: "127.0.0.1:" + s2.port, timeoutMs: 5000 });
+    const info = await h2.getClips();
+    assert.strictEqual(info.raw.readVia, "playlist elements", info.raw.readVia);
+    const c = info.clips[0];
+    assert(near(c.start, 2) && near(c.inPoint, 10), JSON.stringify(c));
+    s2.close();
+  });
+  await check("both routes describe the same clip", async () => {
+    // The fallback must not quietly disagree with the private route about
+    // where a clip sits or which part of the file it plays.
+    const granted = new MockSession({ folder: path.join(OUT, "cmp"), privateApi: true });
+    const refused = new MockSession({ folder: path.join(OUT, "cmp") });
+    for (const sess of [granted, refused]) {
+      const fid = sess.addFile(path.join(raw, denisFile));
+      sess.addTrack("Denis", [{ start: 2, end: 1500, fileId: fid, srcStart: 10 }, { start: 1600, end: 1700, fileId: fid, srcStart: 2000, muted: true }]);
+    }
+    const sa = await startMockServer(granted), sb = await startMockServer(refused);
+    const via = async (srv) => {
+      const h = new ProToolsHands({ address: "127.0.0.1:" + srv.port, timeoutMs: 5000 });
+      const i = await h.getClips();
+      return i.clips.map((c) => [c.trackName, c.name, c.start.toFixed(3), c.end.toFixed(3), c.inPoint.toFixed(3), c.outPoint.toFixed(3), c.muted, path.basename(c.path)]);
+    };
+    assert.deepStrictEqual(await via(sb), await via(sa));
+    sa.close(); sb.close();
+  });
+
   await check("mapCandidate over the adapter's clips lands the Nathan filler", async () => {
     const info = await hands.getClips();
     const c = cands.find((x) => x.speaker === "nathan_taylor" && x.kind === "filler");

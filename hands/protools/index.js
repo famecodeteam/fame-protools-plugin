@@ -54,6 +54,58 @@ function listOf(body, ...names) {
   return [];
 }
 
+// Parse the track EDLs out of Pro Tools' session text export.
+//
+// Each track is a "TRACK NAME:" block followed by a tab-separated table
+// whose header names its own columns - TIMESTAMP is only there when user
+// timestamps were asked for - so the columns are read by name, never by
+// position. Times are whatever unit was requested; Samples is a plain
+// number, and MinSecs is accepted too in case a build ignores the request.
+function parseSessionText(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const tracks = [];
+  let cur = null;
+  let cols = null;
+  const num = (v) => {
+    const t = String(v || "").trim();
+    if (/^\d+$/.test(t)) return { samples: Number(t) };
+    const ms = t.match(/^(\d+):(\d+(?:\.\d+)?)$/);
+    if (ms) return { sec: Number(ms[1]) * 60 + Number(ms[2]) };
+    const hms = t.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
+    if (hms) return { sec: Number(hms[1]) * 3600 + Number(hms[2]) * 60 + Number(hms[3]) };
+    return null;
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    const name = line.match(/^TRACK NAME:\t?\s*(.*)$/);
+    if (name) {
+      cur = { name: name[1].trim(), events: [] };
+      cols = null;
+      tracks.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    if (!line.trim()) { cols = null; continue; }
+    const cells = line.split("\t").map((c) => c.trim());
+    if (/^CHANNEL$/i.test(cells[0] || "")) {
+      cols = {};
+      cells.forEach((c, i) => { cols[c.toUpperCase()] = i; });
+      continue;
+    }
+    if (!cols) continue;
+    if (!/^\d+$/.test(cells[0] || "")) continue;
+    const start = num(cells[cols["START TIME"]]);
+    const end = num(cells[cols["END TIME"]]);
+    if (!start || !end) continue;
+    cur.events.push({
+      clipName: cells[cols["CLIP NAME"]] || "",
+      start, end,
+      muted: /^muted$/i.test(cells[cols["STATE"]] || ""),
+    });
+  }
+  return tracks.filter((t) => t.events.length);
+}
+
 function enumNumber(value, fallback) {
   if (typeof value === "number") return value;
   const m = String(value || "").match(/\d+/);
@@ -137,6 +189,35 @@ class ProToolsHands {
       hasClips: !!(t.track_attributes && t.track_attributes.contains_clips),
       muted: !!(t.track_attributes && t.track_attributes.is_muted),
     }));
+  }
+
+  // Pro Tools' own "Export Session Info as Text", returned as a string
+  // rather than written to disk. This is the PUBLIC route to the timeline:
+  // GetTrackPlaylists and GetPlaylistElements are private API, refused with
+  // "Private API has not been enabled in this session" unless Avid has
+  // issued the caller a key. The text carries every clip on every track
+  // with its start and end; GetClipList (public, and working) supplies each
+  // clip's source range, joined by clip name.
+  async _sessionText() {
+    const r = await this.client.send("ExportSessionInfoAsText", {
+      include_file_list: true,
+      include_clip_list: false,
+      include_markers: false,
+      include_plugin_list: false,
+      include_track_edls: true,
+      show_sub_frames: false,
+      include_user_timestamps: true,
+      track_list_type: "AllTracks",
+      // Crossfades as their own events would double-count a seam; the
+      // clips either side already describe the timeline.
+      fade_handling_type: "DontShowCrossfades",
+      track_offset_options: "Samples",
+      text_as_file_format: "UTF8",
+      output_type: "ESI_String",
+      output_path: "",
+      location_type: "TLType_Samples",
+    }, { timeoutMs: 180000 });
+    return r.session_info || r.sessionInfo || r.text || "";
   }
 
   async getClips() {
@@ -255,6 +336,61 @@ class ProToolsHands {
     const sessionFile = (pathR.session_path && pathR.session_path.path) || "";
     if (truncated) {
       readErrors.push("this session has " + clipTotal + " clips and only " + clipsSeen + " could be read, so some carry no source file");
+    }
+    // Nothing came back from the playlist route - on any Pro Tools that has
+    // not been granted the private API, that is every session. Fall back to
+    // the public text export, which needs one call and no permission.
+    if (!clips.length) {
+      try {
+        const text = await this._sessionText();
+        this.raw.sessionTextBytes = text.length;
+        const byIndex = {};
+        tracks.forEach((t) => { if (byIndex[t.name] === undefined) byIndex[t.name] = t.index; });
+        const defByName = {};
+        Object.keys(defs).forEach((id) => {
+          const d = defs[id];
+          if (d.clip_full_name) defByName[d.clip_full_name] = d;
+          if (d.clip_root_name && !defByName[d.clip_root_name]) defByName[d.clip_root_name] = d;
+        });
+        const secOf = (v) => (v.samples !== undefined ? v.samples / sr : v.sec);
+        const parsed = parseSessionText(text);
+        this.raw.sessionTextTracks = parsed.map((t) => ({ name: t.name, events: t.events.length }));
+        parsed.forEach((t) => {
+          const idx = byIndex[t.name] !== undefined ? byIndex[t.name] : -1;
+          const meta = tracks.find((x) => x.name === t.name);
+          if (meta && !(meta.isAudio || meta.isVideo)) return;
+          t.events.forEach((e, i) => {
+            const start = secOf(e.start), end = secOf(e.end);
+            if (start == null || end == null || end <= start) return;
+            const def = defByName[e.clipName];
+            if (!def) noDefinition++;
+            const srcStart = def ? this._posSec(def.src_start_point, sr) : null;
+            const inPoint = srcStart != null ? srcStart : start;
+            clips.push({
+              id: (def && def.clip_id) || t.name + ":" + i,
+              track: idx, trackName: t.name,
+              // The clip name from the EDL is the editor's own name for it,
+              // which is what the speaker matching reads.
+              name: e.clipName || t.name,
+              path: def && def.file_id ? (paths[def.file_id] || "") : "",
+              type: meta && meta.isVideo ? "video" : "audio",
+              start, end, inPoint, outPoint: inPoint + (end - start), rate: 1,
+              muted: !!e.muted || !!(meta && meta.muted),
+            });
+          });
+        });
+        if (clips.length) {
+          // The playlist refusals are not worth showing once the fallback
+          // has the timeline; they would read as a failure that isn't one.
+          readErrors.length = 0;
+          this.raw.readVia = "session text export";
+        }
+        clips.sort((a, b) => a.track - b.track || a.start - b.start);
+      } catch (e) {
+        readErrors.push("the session text export failed: " + e.message);
+      }
+    } else {
+      this.raw.readVia = "playlist elements";
     }
     this.raw.readErrors = readErrors;
     this.raw.noDefinition = noDefinition;
