@@ -44,7 +44,7 @@ class PtslClient {
     opts = opts || {};
     this.address = opts.address || "localhost:31416";
     this.company = opts.company || "Fame";
-    this.application = opts.application || "Fame Pro Tools Companion";
+    this.application = opts.application || "Fame Pro Tools Plugin";
     this.timeoutMs = opts.timeoutMs || 20000;
     this.sessionId = "";
     this.version = { major: 1, minor: 0, revision: 0 };
@@ -149,7 +149,7 @@ class PtslClient {
     return v.major >= 2022 ? v.major + "." + v.minor : "PTSL v" + v.major;
   }
 
-  // The commands the companion's timeline features need arrived in
+  // The commands the plugin's timeline features need arrived in
   // Pro Tools 2025.10 (GetPlaylistElements, track control breakpoints).
   meetsFloor() {
     const v = this.version;

@@ -1,4 +1,4 @@
-# Fame Pro Tools Companion
+# Fame Pro Tools Plugin
 
 The audio-editor client for Fame's Asset Review Tool, beside Pro Tools.
 Third client for the same brain (after the Premiere plugin and the Reaper
@@ -7,7 +7,7 @@ only adds the **hands** - reading the Pro Tools timeline, jumping, cutting,
 silencing, setting gain, laying out tracks, bouncing - through Avid's
 Pro Tools Scripting SDK (PTSL, gRPC on `localhost:31416`).
 
-Install page: https://review.fame.so/companion
+Install page: https://review.fame.so/protools
 
 ## Layout
 
@@ -22,7 +22,7 @@ Install page: https://review.fame.so/companion
 | `proto/ptsl.proto` | the PTSL envelope (bodies are JSON strings) |
 | `test/` | `npm test` - mapping rules on real server fixtures + the adapter over real gRPC against `mock-ptsl-server.js`; `node test/serve.js <adminKey>` browser-tests the panel against production |
 | `scripts/ptsl-spike.js` | read-only probe against a real Pro Tools - prints what PTSL answers |
-| `scripts/release.js` | bumps `package.json` and writes the review tool's `public/companion/version.json` |
+| `scripts/release.js` | bumps `package.json` and writes the review tool's `public/protools/version.json` |
 | `docs/working-procedure.html` | source of the working-procedure Google Doc (updated IN PLACE via `/api/admin/replace-doc`) |
 
 ## Run / test
@@ -37,9 +37,9 @@ npm run spike     # print the real Pro Tools' answers (Phase 0 probe)
 ## Release
 
 1. `node scripts/release.js 1.2.3 "banner notes"` - bumps `package.json`
-   and writes `../Video Review Tool/public/companion/version.json`.
+   and writes `../Video Review Tool/public/protools/version.json`.
 2. `GH_TOKEN=... npm run dist -- --publish always` - builds the installers and
-   publishes a GitHub release (`famecodeteam/fame-protools-companion`),
+   publishes a GitHub release (`famecodeteam/fame-protools-plugin`),
    which is also the auto-update feed.
 3. Commit + PR the review-tool side (version.json), merge - the install
    page reads it.

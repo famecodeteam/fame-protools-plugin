@@ -1,6 +1,6 @@
 // Release: bump the version in ONE place (package.json - Electron, the
 // installers and the auto-update feed all read it), then write the
-// review-tool repo's public/companion/version.json so the in-app banner
+// review-tool repo's public/protools/version.json so the in-app banner
 // and the install page agree. Commit + PR the VRT side after; publish the
 // installers with `npm run dist -- --publish always` (GH_TOKEN set).
 //
@@ -21,7 +21,7 @@ pkg.version = version;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
 const vrt = process.env.VRT_DIR || path.resolve(here, "..", "Video Review Tool");
-const out = path.join(vrt, "public", "companion");
+const out = path.join(vrt, "public", "protools");
 fs.mkdirSync(out, { recursive: true });
 const repo = pkg.build.publish[0].owner + "/" + pkg.build.publish[0].repo;
 const base = "https://github.com/" + repo + "/releases/download/v" + version + "/";
@@ -30,8 +30,8 @@ const feed = {
   notes,
   releasedAt: new Date().toISOString(),
   downloads: {
-    mac: base + "Fame-Pro-Tools-Companion-" + version + "-mac-universal.dmg",
-    win: base + "Fame-Pro-Tools-Companion-" + version + "-win-x64.exe",
+    mac: base + "Fame-Pro-Tools-Plugin-" + version + "-mac-universal.dmg",
+    win: base + "Fame-Pro-Tools-Plugin-" + version + "-win-x64.exe",
   },
   releasePage: "https://github.com/" + repo + "/releases/tag/v" + version,
 };

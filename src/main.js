@@ -21,7 +21,7 @@ const hands = assertHands(new ProToolsHands());
 function createWindow() {
   win = new BrowserWindow({
     width: 460, height: 860, minWidth: 380, minHeight: 600,
-    title: "Fame Pro Tools Companion",
+    title: "Fame Pro Tools Plugin",
     backgroundColor: "#f8f1eb",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

@@ -235,7 +235,7 @@ footer .ver { font-size: 10px; color: var(--faint); letter-spacing: 0.04em; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
-/* ----- Companion additions (same tokens, no new colours) ----- */
+/* ----- Plugin additions (same tokens, no new colours) ----- */
 #daw-bar {
   margin: 0 14px 8px; padding: 8px 12px; border-radius: 12px; font-size: 12px; flex: none;
   background: var(--ink-raised); border: 1px solid var(--line); display: flex; gap: 8px; align-items: center;

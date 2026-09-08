@@ -1,4 +1,4 @@
-// Fame Pro Tools Companion - the app's own logic.
+// Fame Pro Tools Plugin - the app's own logic.
 //
 // Ported from the Fame Premiere Plugin's js/main.js almost line for line:
 // auth (Supabase password grant), episode load/search, comment feed,
@@ -17,8 +17,8 @@ var SUPABASE_URL = "https://xttbrfynxdbcymzxysxf.supabase.co";
 var SUPABASE_ANON =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0dGJyZnlueGRiY3ltenh5c3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjQ3NzYsImV4cCI6MjA5NDY0MDc3Nn0.-HBXvIWtv1a3kdIbup6udsAdW0RCkQDKqkBixJXbQco";
 var API = "https://review.fame.so/api/panel";
-var VERSION_URL = "https://review.fame.so/companion/version.json";
-var INSTALL_URL = "https://review.fame.so/companion";
+var VERSION_URL = "https://review.fame.so/protools/version.json";
+var INSTALL_URL = "https://review.fame.so/protools";
 var APP_VERSION = "0.0.0"; // filled from package.json by the main process
 var DAW = "protools";
 var FADE_MS = 10;
@@ -359,7 +359,7 @@ function jump(sec, label) {
 
 function renderComments() {
   var data = currentData;
-  $("ep-name").textContent = data ? (data.name || data.slug) : "Pro Tools Companion";
+  $("ep-name").textContent = data ? (data.name || data.slug) : "Pro Tools Plugin";
   var host = $("comments");
   host.innerHTML = "";
   if (!data) return;
@@ -1624,7 +1624,7 @@ $("btn-signout").onclick = function () {
   clearSession();
   currentData = null;
   $("comments").innerHTML = "";
-  $("ep-name").textContent = "Pro Tools Companion";
+  $("ep-name").textContent = "Pro Tools Plugin";
   $("filters").className = "hidden";
   $("cleanup").className = "hidden";
   $("deliver").className = "hidden";

@@ -1,8 +1,8 @@
 {
-  "name": "fame-protools-companion",
-  "productName": "Fame Pro Tools Companion",
-  "version": "1.0.0",
-  "description": "Fame Pro Tools Companion - Asset Review Tool comments and the cleanup pass beside Pro Tools, driven through the Pro Tools Scripting SDK",
+  "name": "fame-protools-plugin",
+  "productName": "Fame Pro Tools Plugin",
+  "version": "1.0.1",
+  "description": "Fame Pro Tools Plugin - Asset Review Tool comments and the cleanup pass beside Pro Tools, driven through the Pro Tools Scripting SDK",
   "main": "src/main.js",
   "private": true,
   "license": "UNLICENSED",
@@ -25,9 +25,9 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "so.fame.protools-companion",
-    "productName": "Fame Pro Tools Companion",
-    "artifactName": "Fame-Pro-Tools-Companion-${version}-${os}-${arch}.${ext}",
+    "appId": "so.fame.protools-plugin",
+    "productName": "Fame Pro Tools Plugin",
+    "artifactName": "Fame-Pro-Tools-Plugin-${version}-${os}-${arch}.${ext}",
     "files": [
       "src/**/*",
       "hands/**/*",
@@ -40,8 +40,18 @@
     "mac": {
       "category": "public.app-category.music",
       "target": [
-        { "target": "dmg", "arch": ["universal"] },
-        { "target": "zip", "arch": ["universal"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
@@ -49,7 +59,14 @@
       "notarize": false
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": true,
@@ -59,7 +76,7 @@
       {
         "provider": "github",
         "owner": "famecodeteam",
-        "repo": "fame-protools-companion",
+        "repo": "fame-protools-plugin",
         "releaseType": "release"
       }
     ]
