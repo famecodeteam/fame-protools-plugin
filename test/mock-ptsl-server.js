@@ -78,6 +78,15 @@ class MockSession {
 
   handle(cmd, body) {
     this.log.push(cmd);
+    // Real Pro Tools (2026.0) refuses a request that carries two ways of
+    // naming the same thing. Every cleanup row in the first field session
+    // read "not on timeline" because of this, and the mock happily
+    // accepted both - so the harness now enforces the real rule.
+    for (const pair of [["track_id", "track_name"], ["playlist_id", "playlist_name"], ["track_ids", "track_names"]]) {
+      const a = body[pair[0]], b = body[pair[1]];
+      const has = (v) => Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== "");
+      if (has(a) && has(b)) throw fail("PT_UnknownError", "Only one of '" + pair[0] + "' and '" + pair[1] + "' must be defined");
+    }
     if (!this.registered && cmd !== "HostReadyCheck" && cmd !== "RegisterConnection") throw fail("PT_UnknownError", "not registered");
     const sr = this.sampleRate;
     const loc = (samples) => ({ location: String(samples), time_type: "TLType_Samples" });
@@ -99,7 +108,9 @@ class MockSession {
         needFloor(10);
         const t = this.tracks.find((x) => x.id === body.track_id || x.name === body.track_name);
         if (!t) throw fail("PT_NoTrackFound", "no such track");
-        return { playlists: [{ playlist_id: t.playlistId, playlist_name: t.name + ".01", is_target: true, is_solo_comp_lane_on: false, playlist_type: "PType_Main" }] };
+        // `playlist_list`, matching the `clip_list` spelling the real
+        // server uses for its repeated fields.
+        return { playlist_list: [{ playlist_id: t.playlistId, playlist_name: t.name + ".01", is_target: true, is_solo_comp_lane_on: false, playlist_type: "PType_Main" }] };
       }
       case "GetPlaylistElements": {
         needFloor(10);
@@ -120,7 +131,10 @@ class MockSession {
           start_point: { position: 0, time_type: "BTType_Samples" }, end_point: { position: e.end - e.start, time_type: "BTType_Samples" },
           src_start_point: { position: e.srcStart, time_type: "BTType_Samples" }, src_end_point: { position: e.srcStart + (e.end - e.start), time_type: "BTType_Samples" },
         })));
-        return { clips, pagination_response: { total: clips.length, limit: 2000, offset: 0 } };
+        // The real server answers `clip_list`, not the proto's `clips`.
+        const limit = Math.max(1, Number((body.pagination_request || {}).limit) || 2000);
+        const offset = Math.max(0, Number((body.pagination_request || {}).offset) || 0);
+        return { clip_list: clips.slice(offset, offset + limit), pagination_response: { total: clips.length, limit, offset } };
       }
       case "GetFileLocation":
         return { file_locations: Object.keys(this.files).map((fid) => ({ path: this.files[fid], info: { is_online: true }, file_id: fid })) };

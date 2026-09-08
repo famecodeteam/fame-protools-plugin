@@ -141,6 +141,25 @@ async function main() {
     assert(st.capabilities.readTimeline && st.capabilities.rippleCut && st.capabilities.trackGain);
     assert(session.log.indexOf("RegisterConnection") >= 0 && session.log.indexOf("GetPTSLVersion") >= 0);
   });
+  await check("the mock refuses two selectors exactly as Pro Tools 2026.0 does", async () => {
+    // Proof the guard below is real, not decoration: this is the verbatim
+    // refusal that made every cleanup row read "not on timeline".
+    await assert.rejects(
+      () => hands.client.send("GetTrackPlaylists", { track_id: session.tracks[0].id, track_name: session.tracks[0].name }),
+      /Only one of 'track_id' and 'track_name' must be defined/,
+    );
+  });
+  await check("a track that reports no clips costs neither a round trip nor an error line", async () => {
+    const empty = session.addTrack("Prev Eps", []);
+    empty.hasNoClips = true;
+    const before = session.log.filter((c) => c === "GetTrackPlaylists").length;
+    const info = await hands.getClips();
+    const after = session.log.filter((c) => c === "GetTrackPlaylists").length;
+    assert.deepStrictEqual(info.readErrors, [], JSON.stringify(info.readErrors));
+    assert(after - before <= session.tracks.length - 1, "asked about the empty track anyway");
+    session.tracks.pop();
+  });
+
   await check("getClips joins playlist elements, clip definitions and file paths", async () => {
     const info = await hands.getClips();
     assert.strictEqual(info.sampleRate, 48000);

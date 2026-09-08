@@ -29,6 +29,9 @@ const { CAPABILITIES } = require("../interface");
 const FADE_PRESET = "Fame 10ms";
 const FADE_SEC = 0.010;
 const PAGE = { limit: 2000, offset: 0 };
+// Enough for any episode; the guard is against a runaway paging loop, not
+// against a big session.
+const MAX_CLIPS = 40000;
 
 // Enum names on the wire may carry any of Avid's aliases (TT_Audio,
 // TType_Audio, AudioTrack ...) or arrive as a number - compare loosely.
@@ -38,6 +41,19 @@ function enumIs(value, wanted, numeric) {
   const v = String(value).toLowerCase().replace(/^[a-z0-9]+_/, "");
   return wanted.some((w) => v === w.toLowerCase());
 }
+// Pro Tools' JSON does not always use the field name in Avid's own .proto:
+// GetClipList answers `clip_list` where the proto says `clips`, and the
+// pattern repeats across the repeated fields. Read every spelling rather
+// than trusting one - a mismatch here reads as an empty session, which is
+// exactly how the first field report presented (85 clips, none seen).
+function listOf(body, ...names) {
+  for (const n of names) {
+    const v = body && body[n];
+    if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
 function enumNumber(value, fallback) {
   if (typeof value === "number") return value;
   const m = String(value || "").match(/\d+/);
@@ -113,7 +129,7 @@ class ProToolsHands {
       pagination_request: PAGE,
     });
     this.raw.trackList = r;
-    return (r.track_list || []).map((t, i) => ({
+    return listOf(r, "track_list", "tracks").map((t, i) => ({
       id: t.id, name: t.name || "", index: typeof t.index === "number" ? t.index : i,
       isAudio: enumIs(t.type, ["audio", "audiotrack"], 2),
       isVideo: enumIs(t.type, ["video", "videotrack"], 4),
@@ -134,20 +150,27 @@ class ProToolsHands {
       this.client.send("GetSessionPath", null).catch(() => ({})),
     ]);
     const tracks = await this._tracks();
-    const clipR = await this.client.send("GetClipList", { pagination_request: PAGE });
-    this.raw.clipList = clipR;
+    // A heavily edited session holds far more clips than tracks - 85 across
+    // two tracks in the first real session - so page until the server's own
+    // total is in hand rather than trusting one request.
     const defs = {};
-    (clipR.clips || []).forEach((c) => { defs[c.clip_id] = c; });
-    // A heavily edited session can hold more clips than one page. Say so
-    // rather than silently matching against a partial clip list.
-    const clipTotal = clipR.pagination_response && Number(clipR.pagination_response.total);
-    const truncated = isFinite(clipTotal) && clipTotal > (clipR.clips || []).length;
+    let clipsSeen = 0, clipTotal = 0;
+    for (let offset = 0; offset < MAX_CLIPS; offset += PAGE.limit) {
+      const page = await this.client.send("GetClipList", { pagination_request: { limit: PAGE.limit, offset } });
+      if (!offset) this.raw.clipList = page;
+      const got = listOf(page, "clip_list", "clips");
+      got.forEach((c) => { defs[c.clip_id] = c; });
+      clipsSeen += got.length;
+      clipTotal = Number((page.pagination_response || {}).total) || clipsSeen;
+      if (!got.length || clipsSeen >= clipTotal) break;
+    }
+    const truncated = clipTotal > clipsSeen;
     const fileR = await this.client.send("GetFileLocation", {
       page_limit: PAGE.limit, file_filters: ["All_Files"], pagination_request: PAGE,
     }).catch(() => ({ file_locations: [] }));
     this.raw.fileLocations = fileR;
     const paths = {};
-    (fileR.file_locations || []).forEach((f) => { if (f.file_id) paths[f.file_id] = f.path || ""; });
+    listOf(fileR, "file_locations", "file_location_list").forEach((f) => { if (f.file_id) paths[f.file_id] = f.path || ""; });
 
     const clips = [];
     const readErrors = [];
@@ -155,9 +178,18 @@ class ProToolsHands {
     this.raw.playlists = {};
     for (const t of tracks) {
       if (!(t.isAudio || t.isVideo)) continue;
+      // Pro Tools already said whether this track holds anything. Asking
+      // about the empty ones costs a round trip each and, when something
+      // goes wrong, fills the reason line with tracks that were never
+      // going to carry the conversation.
+      if (t.hasClips === false) continue;
       let pl;
       try {
-        pl = await this.client.send("GetTrackPlaylists", { track_id: t.id, track_name: t.name, pagination_request: PAGE });
+        // ONE selector only. Pro Tools rejects a request carrying both with
+        // "Only one of 'track_id' and 'track_name' must be defined" - the
+        // fault behind every row reading "not on timeline" in the first
+        // real session. The id is the safe choice: track names repeat.
+        pl = await this.client.send("GetTrackPlaylists", { track_id: t.id, pagination_request: PAGE });
       } catch (e) {
         // Never swallow this. The first field report was every candidate
         // reading "not on timeline", and a silent `continue` here looks
@@ -165,12 +197,13 @@ class ProToolsHands {
         readErrors.push(t.name + ": " + e.message);
         continue;
       }
-      const main = (pl.playlists || []).find((p) => p.is_target) || (pl.playlists || []).find((p) => enumIs(p.playlist_type, ["main"], 1)) || (pl.playlists || [])[0];
+      const pls = listOf(pl, "playlists", "playlist_list");
+      const main = pls.find((p) => p.is_target) || pls.find((p) => enumIs(p.playlist_type, ["main"], 1)) || pls[0];
       if (!main) { readErrors.push(t.name + ": no playlist reported"); continue; }
       let el;
       try {
         el = await this.client.send("GetPlaylistElements", {
-          playlist_id: main.playlist_id, playlist_name: main.playlist_name || "",
+          playlist_id: main.playlist_id,
           time_format: "TLType_Samples", pagination_request: PAGE,
         });
       } catch (e) {
@@ -178,13 +211,26 @@ class ProToolsHands {
         continue;
       }
       this.raw.playlists[t.name] = el;
-      (el.elements_list || []).forEach((e, i) => {
-        const cc = (e.channel_clips || []).find((c) => c && !c.is_null && c.clip_id) || (e.channel_clips || [])[0];
+      listOf(el, "elements_list", "element_list", "elements").forEach((e, i) => {
+        const chans = listOf(e, "channel_clips", "channel_clip_list");
+        const cc = chans.find((c) => c && !c.is_null && c.clip_id) || chans[0];
         const def = cc && defs[cc.clip_id];
-        const start = this._secOf(e.start_time, sr) != null ? this._secOf(e.start_time, sr) : this._secOf(e.element_location, sr);
-        const end = this._secOf(e.end_time, sr);
+        // A time can arrive as `{location}` (TLType_*) or `{position}`
+        // (BTType_*), under `_time` or `_point`. The clip list uses both
+        // spellings in one object, so read either rather than assume.
+        const at = (...names) => {
+          for (const n of names) {
+            const v = e[n];
+            if (v == null) continue;
+            const sec = v.position !== undefined ? this._posSec(v, sr) : this._secOf(v, sr);
+            if (sec != null) return sec;
+          }
+          return null;
+        };
+        const start = at("start_time", "start_point", "element_location");
+        const end = at("end_time", "end_point");
         if (start == null || end == null || end <= start) return;
-        const play = this._secOf(e.play_time, sr);
+        const play = at("play_time", "play_point");
         // A trimmed instance may report play_time inside start/end; the
         // offset is added to the definition's own source start.
         const trimIn = play != null && play > start ? play - start : 0;
@@ -208,7 +254,7 @@ class ProToolsHands {
     clips.sort((a, b) => a.track - b.track || a.start - b.start);
     const sessionFile = (pathR.session_path && pathR.session_path.path) || "";
     if (truncated) {
-      readErrors.push("the clip list is longer than one page (" + clipTotal + " clips) - only the first " + (clipR.clips || []).length + " carry a source file");
+      readErrors.push("this session has " + clipTotal + " clips and only " + clipsSeen + " could be read, so some carry no source file");
     }
     this.raw.readErrors = readErrors;
     this.raw.noDefinition = noDefinition;
@@ -392,12 +438,12 @@ class ProToolsHands {
     const control = { section: "TSId_MainOut", control_type: "TCType_Volume" };
     let assumed = 0;
     for (const t of tracks) {
-      const info = await this.client.send("GetTrackControlInfo", { track_ids: [t.id], track_names: [t.name], control_id: control });
-      const ci = (info.control_info || [])[0] || {};
+      const info = await this.client.send("GetTrackControlInfo", { track_ids: [t.id], control_id: control });
+      const ci = listOf(info, "control_info", "control_info_list")[0] || {};
       const min = typeof ci.min_value === "number" ? ci.min_value : -144;
       const max = typeof ci.max_value === "number" ? ci.max_value : 12;
-      const cur = await this.client.send("GetTrackControlBreakpoints", { track_id: t.id, track_name: t.name, control_id: control }).catch(() => ({ breakpoints: [] }));
-      let bps = (cur.breakpoints || []).map((b) => ({ time: b.time, value: Math.min(max, Math.max(min, Number(b.value) + dB)) }));
+      const cur = await this.client.send("GetTrackControlBreakpoints", { track_id: t.id, control_id: control }).catch(() => ({}));
+      let bps = listOf(cur, "breakpoints", "breakpoint_list").map((b) => ({ time: b.time, value: Math.min(max, Math.max(min, Number(b.value) + dB)) }));
       if (!bps.length) {
         assumed++;
         bps = [
@@ -405,7 +451,7 @@ class ProToolsHands {
           { time: this._loc(endSec, sr), value: Math.min(max, Math.max(min, dB)) },
         ];
       }
-      await this.client.send("SetTrackControlBreakpoints", { track_id: t.id, track_name: t.name, control_id: control, breakpoints: bps });
+      await this.client.send("SetTrackControlBreakpoints", { track_id: t.id, control_id: control, breakpoints: bps });
     }
     const out = { tracks: tracks.length };
     if (assumed) out.note = "Written as volume automation from the fader's 0 dB position on " + assumed + " track(s) - if that fader was not at 0 dB, Undo and set it by hand.";
@@ -435,7 +481,7 @@ class ProToolsHands {
       const t = created.find((x) => x.name.toLowerCase() === stem || x.name.toLowerCase().indexOf(stem.slice(0, 24)) === 0);
       if (t && f.name && f.name !== t.name) {
         try {
-          await this.client.send("RenameTargetTrack", { track_id: t.id, current_name: t.name, new_name: f.name });
+          await this.client.send("RenameTargetTrack", { track_id: t.id, new_name: f.name });
           named.push(f.name);
         } catch (e) { named.push(t.name); }
       } else if (t) named.push(t.name);
