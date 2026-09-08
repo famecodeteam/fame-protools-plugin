@@ -1,0 +1,60 @@
+<html><head><meta charset="utf-8"><title>Fame Pro Tools Companion Working Procedure</title></head>
+<body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
+<h1>Fame Pro Tools Companion Working Procedure</h1>
+<p><i>Everything the Companion can do, in plain English - what each button does, where its information comes from, and what it will never do without you clicking a button. It is the Pro Tools counterpart to the Fame Reaper Plugin and the Fame Premiere Plugin: same brain on the server, Pro Tools' hands on the session.</i></p>
+<p><b>Version:</b> 1.0.0 (8 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Install:</b> <a href="https://review.fame.so/companion">review.fame.so/companion</a>. Needs Pro Tools 2025.10 or newer, any tier.</p>
+
+<h2>How the three systems fit together</h2>
+<ul>
+<li><b>Team Portal</b> - holds each client's rules: cleanup style (how aggressive on fillers, whether to cut repeats, how long a pause is too long), the AM's notes, and who is on the team. It <b>feeds the rules into the Companion</b> automatically.</li>
+<li><b>Fame Pro Tools Companion</b> - a small app beside Pro Tools. It reads your session through Pro Tools' own scripting service and moves it: jump, cut, silence, level, bounce.</li>
+<li><b>Asset Review Tool</b> - where clients listen, comment and approve. <b>Comments flow into</b> the Companion, and <b>your uploads flow out</b> to it.</li>
+</ul>
+<p>You never have to open the Team Portal yourself. If a client's cleanup style looks wrong, tell your <b>PM or AM</b>; they edit it in the Team Portal and the Companion picks the change up on the next Analyze.</p>
+
+<h2>One-time setup</h2>
+<ol>
+<li>Install the app from <a href="https://review.fame.so/companion">review.fame.so/companion</a> and sign in with your review.fame.so email and password.</li>
+<li>In Pro Tools, <b>Setup &gt; Preferences &gt; Scripting</b>: make sure scripting is enabled. Open a session; the Companion's header turns green ("Pro Tools 2025.10 connected"). Press <b>Retry</b> if not.</li>
+<li>Save one fade preset named exactly <b>Fame 10ms</b> (select a clip edge, Cmd/Ctrl+F, 10 ms in and out, Save preset). Every cut the Companion makes gets that fade on its edges. Without the preset the cuts still land and the app tells you fades were skipped.</li>
+</ol>
+
+<h2>Loading an episode</h2>
+<p>Paste any link to the episode - the client review page, the /ve link from the Trello card, or the bare slug - and press <b>Load</b>. No link? Type the client, show or guest name in the search box. Recent episodes sit as chips under the box.</p>
+<p>The <b>episode brief</b> shows the show, guest, team, the AM's house notes and this client's watch-outs (mined from their past comments). Shot rules are for video editors and are not shown.</p>
+
+<h2>Comments</h2>
+<p>Every client and QA comment on the episode's assets, audio asset first, newest two versions each. Click a timestamp and Pro Tools jumps the cursor there and plays. Filters: All / Client / QA, and Hide resolved.</p>
+<p>A comment marked <b>cuttable</b> is one the server could turn into an exact cut ("delete the um at 3:20"). Its <b>Apply</b> button makes that cut on your session - it refuses rather than guessing, and jumps you there instead when it can't be sure.</p>
+
+<h2>Cleanup pass</h2>
+<p><b>Analyze audio</b> transcribes the episode's raw recordings from its Drive folder word for word (fillers included) and lists fillers, repeats, dead air, breaths, mouth clicks and "maybe" words. The analysis belongs to the <b>episode</b>: if the video editor already ran it, it appears at once.</p>
+<p>Everything is mapped onto <b>your</b> session through the clips that use each recording - by file name, by the Riverside speaker name, or by the speaker's name anywhere in the clip name - so a trimmed, moved or renamed clip still lands right. "522 of 525 found on your timeline" tells you how many mapped; press <b>Refresh</b> after re-arranging.</p>
+<ul>
+<li><b>Tick boxes and word chips</b> decide what goes. The client's style pre-ticks the safe defaults; long fillers get a "long" badge.</li>
+<li><b>Apply N cuts</b> ripple-cuts each ticked range from <b>every track</b>, back to front, with the fade preset on each seam. Pro Tools' Undo puts each cut back.</li>
+<li><b>Silence instead</b> (breaths, clicks, spoken-over fillers) clears the range from the speaker's own track(s) only - a gap, no ripple, session length unchanged. Use it wherever a ripple cut would clip the other person.</li>
+<li><b>Spoken over</b> items can only be silenced, never cut - cutting would clip the other speaker's words.</li>
+<li><b>Audio issues</b> lists dropouts, clicks and level problems the analysis found. <b>Fix levels</b> next to a speaker-imbalance warning writes the difference as volume automation on that speaker's track(s). It refuses over 30 dB - that is a broken or bleeding mic, not a fader problem. If the track had no volume automation, it assumes the fader sat at 0 dB and says so.</li>
+<li><b>Build audio assembly</b> lays out each speaker's raw master on its own named track at 0, then applies the pre-ticked cuts and the level fix. It reads the files from the folder your session already points at, or asks you to pick it; it never downloads from Drive. Missing files are named, never assembled around.</li>
+</ul>
+
+<h2>Deliver</h2>
+<ol>
+<li><b>Bounce + check</b> does an offline bounce of the main mix to MP3 320 into a "Fame renders" folder beside your session, measures integrated loudness and true peak on your machine, and runs preflight (Fame's -14 LUFS target, true peak, duration, stereo). Already bounced with your own chain? <b>Choose a bounced file</b> gives it the same checks.</li>
+<li><b>Check comments</b> lists open comments that still look unaddressed: cuttable ones are checked mechanically against your session; judgement ones are counted for a last look. Advisory only.</li>
+<li><b>Check music balance</b> measures your speech clips and everything else the same way and warns when the music sits 4 dB or more over the conversation - the "music is too loud" complaint, caught before you bounce.</li>
+<li><b>Upload as vN</b> sends the file straight from your machine to Drive and records it as the audio asset's next version, internal-only, with a what-changed note for the PM listing every action the Companion took. QA runs on it automatically.</li>
+</ol>
+
+<h2>What it will never do without you</h2>
+<ul>
+<li>It never cuts, silences, levels, bounces or uploads until you press the button, and every action shows an in-app confirmation first.</li>
+<li>It never touches Drive to read media - the raw files come from your disk.</li>
+<li>It puts your edit mode, link settings, selection and track selection back the way they were after every action.</li>
+</ul>
+
+<h2>When something looks wrong</h2>
+<p>Press <b>Diagnostics</b> at the bottom, then <b>Copy for Tom</b> and paste it to Tom. It contains exactly what Pro Tools answered (version, tracks, clips) - that is what makes a fix quick. The first real sessions will settle a few details the build could not (how Pro Tools reports a trimmed clip's start, the fade preset lookup), so the first week's feedback is the spec.</p>
+</body></html>

@@ -1,0 +1,67 @@
+{
+  "name": "fame-protools-companion",
+  "productName": "Fame Pro Tools Companion",
+  "version": "1.0.0",
+  "description": "Fame Pro Tools Companion - Asset Review Tool comments and the cleanup pass beside Pro Tools, driven through the Pro Tools Scripting SDK",
+  "main": "src/main.js",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Fame <team@fame.so>",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/run.js",
+    "spike": "node scripts/ptsl-spike.js",
+    "dist": "electron-builder --publish never",
+    "release": "node scripts/release.js"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.2",
+    "@grpc/proto-loader": "^0.7.13",
+    "electron-updater": "^6.3.9",
+    "ffmpeg-static": "^5.2.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "so.fame.protools-companion",
+    "productName": "Fame Pro Tools Companion",
+    "artifactName": "Fame-Pro-Tools-Companion-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "src/**/*",
+      "hands/**/*",
+      "proto/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "famecodeteam",
+        "repo": "fame-protools-companion",
+        "releaseType": "release"
+      }
+    ]
+  }
+}
