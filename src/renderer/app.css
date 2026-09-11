@@ -314,3 +314,19 @@ pre.diag {
 }
 .cl-group-title:hover { color: var(--pink); }
 @media (prefers-reduced-motion: reduce) { .cl-caret { transition: none; } }
+
+/* The hook the AM picked, read off the episode's Trello card. */
+#hook {
+  border: 1px solid var(--line); border-radius: 16px;
+  padding: 10px 12px; background: var(--ink-raised);
+}
+.hook-note { display: flex; gap: 9px; align-items: flex-start; padding: 6px 0; }
+.hook-note + .hook-note { border-top: 1px solid var(--line-soft); }
+.hook-note.older { opacity: 0.6; }
+.hook-body { flex: 1; min-width: 0; }
+.hook-text {
+  font-size: 12px; cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.hook-text.full { -webkit-line-clamp: unset; }
+.hook-meta { font-size: 10px; color: var(--faint); margin-top: 2px; }

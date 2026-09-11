@@ -2,7 +2,7 @@
 <body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
 <h1>Fame Pro Tools Plugin Working Procedure</h1>
 <p><i>Everything the Plugin can do, in plain English - what each button does, where its information comes from, and what it will never do without you clicking a button. It is the Pro Tools counterpart to the Fame Reaper Plugin and the Fame Premiere Plugin: same brain on the server, Pro Tools' hands on the session.</i></p>
-<p><b>Version:</b> 1.1.5 (11 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Version:</b> 1.1.6 (11 September 2026). This document is updated in place - the link never changes.</p>
 <p><b>Install:</b> <a href="https://review.fame.so/protools">review.fame.so/protools</a>. Needs Pro Tools 2025.10 or newer, any tier. <b>Cubase editors use the same app</b> - see the <a href="https://docs.google.com/document/d/1dxACMDcwi14Aym_nNdno3tdDpA5AsEYn4cIWDqhnC_s/edit">Cubase working procedure</a>.</p>
 
 <h2>How the three systems fit together</h2>
@@ -27,6 +27,10 @@
 <h2>Comments</h2>
 <p>Every client and QA comment on the episode's assets, audio asset first, newest two versions each. Click a timestamp and Pro Tools jumps the cursor there and plays. Filters: All / Client / QA, and Hide resolved.</p>
 <p>A comment marked <b>cuttable</b> is one the server could turn into an exact cut ("delete the um at 3:20"). Its <b>Apply</b> button makes that cut on your session - it refuses rather than guessing, and jumps you there instead when it can't be sure.</p>
+
+<h2>The hook</h2>
+<p>The AM picks the hook and writes it to you in a comment on the episode's Trello card. The Plugin now reads those comments and shows it under the brief: the time the AM gave, their quote, and a button that jumps you there and plays. Older hook notes sit behind "Show older hook notes", and "Open the Trello card" takes you to the thread if you need the rest of it.</p>
+<p>The time is where the AM was on the review page - the delivered episode - which is the same clock a client's comment timestamp uses. If the AM pointed at a document instead of giving a time, the note says so and gives you the link.</p>
 
 <h2>Cleanup pass</h2>
 <p><b>Analyze audio</b> transcribes the episode's raw recordings from its Drive folder word for word (fillers included) and lists fillers, repeats, dead air, breaths, mouth clicks and "maybe" words. The analysis belongs to the <b>episode</b>: if the video editor already ran it, it appears at once.</p>

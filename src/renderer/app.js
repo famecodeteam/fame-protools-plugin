@@ -453,7 +453,10 @@ function loadEpisode() {
     resetCleanup();
     pollCleanupLoop();
     briefData = null;
+    hookData = null;
+    renderHook();
     loadBrief();
+    loadHook();
     var total = countComments(function () { return true; });
     setStatus(total === 0 ? "Loaded - no comments yet." : total + " comment" + (total === 1 ? "" : "s") + " loaded.", "ok");
   }).catch(function (e) {
@@ -1499,6 +1502,106 @@ $("btn-assembly").onclick = buildAssembly;
 
 var briefData = null;
 
+// ---------- the hook the AM picked ----------
+//
+// At Fame the AM chooses the hook and writes it to the editors in a Trello
+// card comment - "the hook will be selected by the AM usually and PM may
+// share it in the doc or in the trello comments" (Karthik). The editor then
+// scrolls the card to find it, every episode. The server reads those
+// comments; this shows the answer with a button that jumps there.
+//
+// The AM's time is where they were on the review page - the delivered
+// episode - so it is the same clock a client comment's timestamp uses.
+
+var hookData = null;
+
+function loadHook() {
+  if (!currentData) return;
+  var slug = currentData.slug;
+  apiFetch("/hook?slug=" + encodeURIComponent(slug))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!currentData || currentData.slug !== slug) return;
+      hookData = j;
+      renderHook();
+    })
+    .catch(function () { /* the hook card is a convenience, never an error */ });
+}
+
+function renderHook() {
+  var host = $("hook");
+  var notes = (hookData && hookData.notes) || [];
+  if (!notes.length) { host.className = "hidden"; host.innerHTML = ""; return; }
+  host.className = "";
+  host.innerHTML = "";
+
+  var eb = document.createElement("div");
+  eb.className = "eyebrow";
+  eb.textContent = "Hook - picked by the AM";
+  host.appendChild(eb);
+
+  var showAll = isGroupOpen("Hook older notes");
+  var shown = showAll ? notes : notes.slice(0, 1);
+  shown.forEach(function (n, i) {
+    var row = document.createElement("div");
+    row.className = "hook-note" + (i ? " older" : "");
+    if (n.atSec != null) {
+      var t = document.createElement("button");
+      t.className = "tstamp";
+      t.textContent = fmtTime(n.atSec) + (n.endSec != null ? "-" + fmtTime(n.endSec) : "");
+      t.title = "Jump there and play";
+      t.onclick = function () { jump(n.atSec); };
+      row.appendChild(t);
+    }
+    var body = document.createElement("div");
+    body.className = "hook-body";
+    var txt = document.createElement("div");
+    txt.className = "hook-text";
+    // The button already shows the time, so drop a leading "21:18 - 22:15:"
+    // or "[30:58 - 31:18]" from the quote rather than saying it twice.
+    var shownText = String(n.text || n.raw || "");
+    if (n.atSec != null) {
+      shownText = shownText.replace(/^\s*\[?\s*\d{1,3}:[0-5]\d(?::[0-5]\d)?\s*(?:[-\u2013\u2014]|to)\s*\d{1,3}:[0-5]\d(?::[0-5]\d)?\s*\]?\s*[:\-\u2013]?\s*/, "");
+    }
+    txt.textContent = shownText || n.raw || "";
+    // The quote can run to a paragraph; clamp it and let the tooltip and
+    // a click carry the rest rather than pushing the panel down.
+    txt.title = n.raw || n.text || "";
+    txt.onclick = function () { txt.classList.toggle("full"); };
+    body.appendChild(txt);
+    var meta = document.createElement("div");
+    meta.className = "hook-meta";
+    meta.textContent = (n.author || "the AM") + " \u00b7 " + fmtWhen(n.date);
+    if (n.docUrl) {
+      meta.appendChild(document.createTextNode(" \u00b7 "));
+      var a = document.createElement("button");
+      a.className = "linklike";
+      a.textContent = "open the doc";
+      a.onclick = function () { window.fame.openExternal(n.docUrl); };
+      meta.appendChild(a);
+    }
+    body.appendChild(meta);
+    row.appendChild(body);
+    host.appendChild(row);
+  });
+
+  if (notes.length > 1) {
+    var more = document.createElement("button");
+    more.className = "linklike";
+    more.textContent = showAll ? "Hide older hook notes" : "Show " + (notes.length - 1) + " older hook note" + (notes.length - 1 === 1 ? "" : "s");
+    more.onclick = function () { setGroupOpen("Hook older notes", !showAll); renderHook(); };
+    host.appendChild(more);
+  }
+  if (hookData && hookData.cardUrl) {
+    var card = document.createElement("button");
+    card.className = "linklike";
+    card.style.marginLeft = "8px";
+    card.textContent = "Open the Trello card";
+    card.onclick = function () { window.fame.openExternal(hookData.cardUrl); };
+    host.appendChild(card);
+  }
+}
+
 function loadBrief() {
   if (!currentData) return;
   apiFetch("/brief?slug=" + encodeURIComponent(currentData.slug))
@@ -2035,6 +2138,7 @@ $("btn-signout").onclick = function () {
   $("cleanup").className = "hidden";
   $("deliver").className = "hidden";
   $("brief").className = "hidden";
+  $("hook").className = "hidden";
   resetCleanup();
   showView("login");
 };
