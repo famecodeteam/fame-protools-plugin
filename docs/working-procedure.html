@@ -2,7 +2,7 @@
 <body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
 <h1>Fame Pro Tools Plugin Working Procedure</h1>
 <p><i>Everything the Plugin can do, in plain English - what each button does, where its information comes from, and what it will never do without you clicking a button. It is the Pro Tools counterpart to the Fame Reaper Plugin and the Fame Premiere Plugin: same brain on the server, Pro Tools' hands on the session.</i></p>
-<p><b>Version:</b> 1.1.4 (11 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Version:</b> 1.1.5 (11 September 2026). This document is updated in place - the link never changes.</p>
 <p><b>Install:</b> <a href="https://review.fame.so/protools">review.fame.so/protools</a>. Needs Pro Tools 2025.10 or newer, any tier. <b>Cubase editors use the same app</b> - see the <a href="https://docs.google.com/document/d/1dxACMDcwi14Aym_nNdno3tdDpA5AsEYn4cIWDqhnC_s/edit">Cubase working procedure</a>.</p>
 
 <h2>How the three systems fit together</h2>
@@ -32,6 +32,7 @@
 <p><b>Analyze audio</b> transcribes the episode's raw recordings from its Drive folder word for word (fillers included) and lists fillers, repeats, dead air, breaths, mouth clicks and "maybe" words. The analysis belongs to the <b>episode</b>: if the video editor already ran it, it appears at once.</p>
 <p>Everything is mapped onto <b>your</b> session through the clips that use each recording - by file name, by the Riverside speaker name, or by the speaker's name anywhere in the clip name - so a trimmed, moved or renamed clip still lands right. "522 of 525 found on your timeline" tells you how many mapped; press <b>Refresh</b> after re-arranging.</p>
 <ul>
+<li><b>Every group starts collapsed</b>, showing its count and how many are ticked - so the whole list and the Apply button fit on one screen. Click a group's name to open it when you want to pick through it one by one; the Plugin remembers which ones you like open.</li>
 <li><b>Tick boxes and word chips</b> decide what goes. The client's style pre-ticks the safe defaults; long fillers get a "long" badge.</li>
 <li><b>Apply N cuts</b> ripple-cuts each ticked range from <b>every track</b>, back to front, with the fade preset on each seam. Pro Tools' Undo puts each cut back.</li>
 <li><b>Silence instead</b> (breaths, clicks, spoken-over fillers) clears the range from the speaker's own track(s) only - a gap, no ripple, session length unchanged. Use it wherever a ripple cut would clip the other person.</li>

@@ -297,3 +297,20 @@ pre.diag {
 }
 .pending b { font-weight: 700; }
 .pending button { margin-left: 8px; }
+
+/* Collapsible cleanup groups - collapsed by default, so every group and
+   the Apply button fit on one screen on an 800-candidate episode. */
+.cl-caret {
+  flex: none; background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--muted); font-size: 9px; line-height: 1;
+  transition: transform 0.12s ease;
+}
+.cl-caret:hover { color: var(--cream); }
+.cl-caret.open { transform: rotate(90deg); }
+.cl-group-title {
+  flex: 1; min-width: 0; text-align: left; background: none; border: none; cursor: pointer;
+  color: inherit; font: inherit; font-weight: 700; padding: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cl-group-title:hover { color: var(--pink); }
+@media (prefers-reduced-motion: reduce) { .cl-caret { transition: none; } }

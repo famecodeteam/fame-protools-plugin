@@ -951,7 +951,7 @@ function renderCleanupWith(info, rawErr) {
   if (readRaw && cands.length && can("readTimeline")) {
     var tip = document.createElement("div");
     tip.className = "cl-notes";
-    tip.textContent = "This analysis read the untouched Riverside recordings. If your tracks hold cleaned or levelled audio, press \u201cAnalyze what's on my timeline\u201d - a transcript of processed audio mishears far fewer words, so fewer fillers are missed.";
+    tip.textContent = "Read from the untouched Riverside recordings. If your tracks hold cleaned audio, \u201cAnalyze what's on my timeline\u201d transcribes that instead - fewer misheard words, fewer missed fillers.";
     body.appendChild(tip);
   }
   if (cleanupState && cleanupState.audioFromVideo) {
@@ -985,10 +985,22 @@ function renderCleanupWith(info, rawErr) {
     var items = cands.filter(g.pred);
     if (!items.length) return;
     if (g.sortByLength) items = items.slice().sort(function (a, b) { return (b.endSec - b.startSec) - (a.endSec - a.startSec); });
+    var open = isGroupOpen(g.title);
     var box = document.createElement("div");
     box.className = "cl-group";
     var head = document.createElement("div");
     head.className = "cl-group-head";
+    // A caret before the tick box, collapsed by default. A real episode is
+    // 800+ candidates across seven groups, and scrolling all of it to reach
+    // Apply cuts was the first thing an AE asked us to fix. Collapsed, every
+    // group and the Apply button fit on one screen.
+    var caret = document.createElement("button");
+    caret.className = "cl-caret" + (open ? " open" : "");
+    caret.setAttribute("aria-expanded", open ? "true" : "false");
+    caret.title = open ? "Collapse" : "Expand to pick individually";
+    caret.textContent = "\u25B6";
+    caret.onclick = function () { setGroupOpen(g.title, !open); renderCleanupWith(info, rawErr); };
+    head.appendChild(caret);
     if (!g.muteOnly) {
       var master = document.createElement("input");
       master.type = "checkbox";
@@ -999,11 +1011,19 @@ function renderCleanupWith(info, rawErr) {
       };
       head.appendChild(master);
     }
-    head.appendChild(document.createTextNode(g.title + " "));
+    var titleBtn = document.createElement("button");
+    titleBtn.className = "cl-group-title";
+    titleBtn.textContent = g.title + " ";
+    titleBtn.title = open ? "Collapse" : "Expand to pick individually";
+    titleBtn.onclick = function () { setGroupOpen(g.title, !open); renderCleanupWith(info, rawErr); };
     var n = document.createElement("span");
     n.className = "n";
-    n.textContent = "(" + items.length + ")";
-    head.appendChild(n);
+    // Collapsed, the count is all the editor can see - so say how many are
+    // ticked as well, or they would have to open it to know what Apply does.
+    var ticked = items.filter(function (c) { return cleanupChecks[c._idx]; }).length;
+    n.textContent = "(" + items.length + (ticked && !g.muteOnly ? ", " + ticked + " ticked" : "") + ")";
+    titleBtn.appendChild(n);
+    head.appendChild(titleBtn);
     if (g.mutable && can("silence")) {
       var muteBtn = document.createElement("button");
       muteBtn.className = "btn-ghost";
@@ -1016,6 +1036,7 @@ function renderCleanupWith(info, rawErr) {
       head.appendChild(muteBtn);
     }
     box.appendChild(head);
+    if (!open) { body.appendChild(box); return; }
 
     var byWord = {};
     items.forEach(function (c) {
@@ -1107,16 +1128,37 @@ function renderCleanupWith(info, rawErr) {
 function renderAudioIssues(body) {
   var issues = (cleanupState && cleanupState.audioIssues) || [];
   if (!issues.length) return;
+  // Collapses like the cut groups: fifteen dropouts and clicks, each a
+  // sentence long, is the tallest thing on the card and it sits between
+  // the editor and the Apply button.
+  var open = isGroupOpen("Audio issues");
   var box = document.createElement("div");
   box.className = "cl-group";
   var head = document.createElement("div");
   head.className = "cl-group-head";
-  head.appendChild(document.createTextNode("Audio issues "));
+  var caret = document.createElement("button");
+  caret.className = "cl-caret" + (open ? " open" : "");
+  caret.setAttribute("aria-expanded", open ? "true" : "false");
+  caret.textContent = "\u25B6";
+  caret.onclick = function () { setGroupOpen("Audio issues", !open); renderCleanupWith(clipsInfo, null); };
+  head.appendChild(caret);
+  var titleBtn = document.createElement("button");
+  titleBtn.className = "cl-group-title";
+  titleBtn.textContent = "Audio issues ";
+  titleBtn.title = open ? "Collapse" : "Expand";
+  titleBtn.onclick = function () { setGroupOpen("Audio issues", !open); renderCleanupWith(clipsInfo, null); };
   var n = document.createElement("span");
   n.className = "n";
-  n.textContent = "(" + issues.length + ")";
-  head.appendChild(n);
+  // The level fix is the one an editor acts on, so surface it collapsed.
+  var fixable = issues.filter(function (i) {
+    var d = Number(i.deltaDb) || 0;
+    return i.kind === "speaker_imbalance" && i.speaker && d !== 0 && Math.abs(d) < MAX_LEVEL_FIX_DB;
+  }).length;
+  n.textContent = "(" + issues.length + (fixable ? ", " + fixable + " fixable" : "") + ")";
+  titleBtn.appendChild(n);
+  head.appendChild(titleBtn);
   box.appendChild(head);
+  if (!open) { body.appendChild(box); return; }
   issues.forEach(function (is) {
     var row = document.createElement("div");
     row.className = "ai-row";
@@ -1172,6 +1214,21 @@ function applyLevelFix(speaker, dB, btn) {
     renderCleanupWith(clipsInfo, null);
     afterHands(r, (dB > 0 ? "+" : "") + dB.toFixed(1) + " dB for " + speaker + " on " + r.tracks + " track(s)." + (r.note ? " " + r.note : ""));
   }).catch(function (e) { btn.disabled = false; setStatus(e.message, "error"); });
+}
+
+// Which cleanup groups are open. Collapsed by default - the editor opens
+// one when they want to pick through it - and remembered per machine so
+// anyone who prefers them open only says so once.
+var groupOpen = null;
+function loadGroupOpen() {
+  if (groupOpen) return groupOpen;
+  try { groupOpen = JSON.parse(localStorage.getItem("fame_groups_open") || "{}"); } catch (e) { groupOpen = {}; }
+  return groupOpen;
+}
+function isGroupOpen(title) { return loadGroupOpen()[title] === true; }
+function setGroupOpen(title, open) {
+  loadGroupOpen()[title] = !!open;
+  try { localStorage.setItem("fame_groups_open", JSON.stringify(groupOpen)); } catch (e) {}
 }
 
 function updateApplyCount() {
