@@ -274,6 +274,40 @@ async function main() {
     const first = session.log.indexOf("Clear");
     assert(session.log.slice(0, first).indexOf("SetEditMode") >= 0);
   });
+  await check("a cut lands on the sample the analysis asked for, not near it", async () => {
+    // The first AE reported cuts landing "a few milliseconds before or
+    // after the fillers". This pins the plugin's own half of that chain:
+    // from a candidate's source time to the samples Pro Tools is told to
+    // clear, the placement must be exact, so any residual error is the
+    // transcript's idea of where the word is - not the cutting.
+    const s3 = new MockSession({ folder: path.join(OUT, "precision"), sampleRate: 44100 });
+    const fid = s3.addFile(path.join(raw, denisFile));
+    // A clip trimmed at the head and moved, like a real edit.
+    s3.addTrack("Denis", [{ start: 12.5, end: 900, fileId: fid, srcStart: 30.25 }]);
+    const srv3 = await startMockServer(s3);
+    const h3 = new ProToolsHands({ address: "127.0.0.1:" + srv3.port, timeoutMs: 5000 });
+    const info = await h3.getClips();
+    // A filler at 100.123 s in the recording sits at 82.373 s on this
+    // timeline (100.123 - 30.25 + 12.5).
+    const cand = { speaker: "denis_vozian", file: denisFile, startSec: 100.123, endSec: 100.457 };
+    const m = core.mapCandidate(cand, info.clips);
+    assert(m, "candidate did not map");
+    assert.strictEqual(Math.round(m.s * 1e6), Math.round(82.373 * 1e6), "mapped start " + m.s);
+    await h3.applyRippleCuts([{ s: m.s, e: m.e }]);
+    // What Pro Tools was actually told to clear, in samples. Read from the
+    // Clear itself: the adapter puts the editor's own selection back.
+    assert.strictEqual(s3.clears.length, 1, JSON.stringify(s3.clears));
+    assert.strictEqual(s3.clears[0].in, Math.round(82.373 * 44100), "cleared from " + s3.clears[0].in);
+    assert.strictEqual(s3.clears[0].out, Math.round((82.373 + 0.334) * 44100), "cleared to " + s3.clears[0].out);
+    // And the timeline agrees: the piece after the cut resumes at the
+    // sample the filler ended on.
+    const after = s3.view()[0].elements;
+    assert.strictEqual(after.length, 2, JSON.stringify(after));
+    // Within half a sample at 44.1 kHz - the finest this can be measured.
+    assert(Math.abs(after[1].srcStart - 100.457) < 1 / 88200, "resumed at source " + after[1].srcStart);
+    srv3.close();
+  });
+
   await check("silenceRanges: only the speaker's tracks get a gap, timeline length unchanged", async () => {
     const before = session.view();
     const r = await hands.silenceRanges([{ tracks: [1], ranges: [{ s: 200, e: 200.4 }] }]);

@@ -49,6 +49,10 @@ class MockSession {
     this.log = [];         // every command name in order
     this.registered = false;
     this.exports = [];
+    // What each Clear was actually told to remove, in samples. The adapter
+    // restores the editor's own selection afterwards, so the final state
+    // cannot tell you where it cut.
+    this.clears = [];
   }
   id(prefix) { return prefix + "-" + (this.nextId++); }
   addFile(p) {
@@ -271,6 +275,7 @@ class MockSession {
   _clear() {
     const { in: a, out: b } = this.selection;
     if (b <= a) throw fail("PT_NoSelection", "empty selection");
+    this.clears.push({ in: a, out: b, mode: this.editMode });
     const shuffle = /Shuffle/i.test(this.editMode);
     const len = b - a;
     this.tracks.filter((t) => t.selected).forEach((t) => {
