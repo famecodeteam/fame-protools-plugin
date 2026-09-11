@@ -37,10 +37,22 @@
     return re.test(name || "");
   }
 
+  // "Analyze what's on my timeline" uploads each speaker's own file as
+  // "<speaker>__<filename>", so the analysis knows who is who whatever the
+  // track was called. The file on the editor's disk still has its original
+  // name, so the prefix has to come off before the two are compared - or
+  // the very audio they just analysed reads as "not on timeline".
+  function sameFile(candidateFile, clipFile) {
+    if (!candidateFile || !clipFile) return false;
+    if (candidateFile === clipFile) return true;
+    var stripped = String(candidateFile).replace(/^[^\s]*?__/, "");
+    return stripped !== candidateFile && stripped === clipFile;
+  }
+
   function mapCandidate(c, clips) {
     var matches = clips.filter(function (cl) {
       var b = basename(cl.path) || cl.name;
-      if (c.file && (b === c.file || cl.name === c.file)) return true;
+      if (c.file && (sameFile(c.file, b) || sameFile(c.file, cl.name))) return true;
       if (c.speaker && (riversideMatch(b, c.speaker) || riversideMatch(cl.name, c.speaker))) return true;
       if (!c.file && !c.speaker) return /^riverside[_-]/i.test(b) || /^riverside[_-]/i.test(cl.name);
       return false;
@@ -166,7 +178,7 @@
 
   return {
     basename: basename, clipMentionsSpeaker: clipMentionsSpeaker, mapCandidate: mapCandidate,
-    unmappedReason: unmappedReason,
+    unmappedReason: unmappedReason, sameFile: sameFile,
     selectedRanges: selectedRanges, tracksForSpeaker: tracksForSpeaker, sourceAnchor: sourceAnchor,
     versionNewer: versionNewer, median: median,
     MAX_LEVEL_FIX_DB: 30, FADE_SEC: 0.010,

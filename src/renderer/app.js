@@ -727,11 +727,11 @@ function cleanupRequest(method) {
     });
 }
 
-function startCleanupAnalysis() {
+function startCleanupAnalysis(note) {
   if (!currentData) return;
   $("btn-analyze").disabled = true;
   $("btn-analyze").textContent = "Analyzing…";
-  $("cl-sub").textContent = "Uploading and transcribing the raw recordings - a full episode takes a few minutes. You can keep editing.";
+  $("cl-sub").textContent = note || "Uploading and transcribing the raw recordings - a full episode takes a few minutes. You can keep editing.";
   cleanupRequest("POST").then(function (j) {
     cleanupState = j.state;
     pollCleanupLoop();
@@ -740,6 +740,123 @@ function startCleanupAnalysis() {
     $("btn-analyze").textContent = "Analyze audio";
     $("cl-sub").textContent = e.message;
   });
+}
+
+// ---------- Analyze what's on my timeline ----------
+//
+// The cleanup pass reads the episode's Raw Assets from Drive. Those are the
+// untouched Riverside recordings, and an AE's first job is often to rescue
+// them - the first Pro Tools AE put it plainly: "sometimes the raw assets
+// are very quiet so the transcripts turned out to be not accurate with the
+// words". A transcript of quiet audio mishears words and misses fillers,
+// and no amount of mapping fixes that.
+//
+// So: send the audio the editor is actually working with. Each speaker's
+// file goes from their own disk straight to the episode's Raw Masters
+// folder on Drive (never through a Fame server), named "<speaker>__<file>"
+// so the analysis knows who is who whatever the track is called, and the
+// analysis then prefers that folder. The AE never opens Drive.
+
+var AUDIO_MIME = {
+  wav: "audio/wav", mp3: "audio/mpeg", aif: "audio/aiff", aiff: "audio/aiff",
+  flac: "audio/flac", m4a: "audio/mp4", ogg: "audio/ogg",
+};
+function mimeForPath(p) {
+  var ext = String(p || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return ext ? AUDIO_MIME[ext[1]] : null;
+}
+function slugifySpeaker(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+// Who this episode has: the analysis's own list when there is one, else the
+// brief's raw-media speakers.
+function knownSpeakers() {
+  var out = [], seen = {};
+  ((cleanupState && cleanupState.files) || []).forEach(function (f) {
+    if (f.speaker && !seen[f.speaker]) { seen[f.speaker] = true; out.push(f.speaker); }
+  });
+  ((briefData && briefData.rawMedia && briefData.rawMedia.speakers) || []).forEach(function (n) {
+    var sl = slugifySpeaker(n);
+    if (sl && !seen[sl]) { seen[sl] = true; out.push(sl); }
+  });
+  return out;
+}
+
+// One local file per speaker: the longest source on that speaker's tracks.
+function timelinePlan(info) {
+  var plan = [], missing = [];
+  knownSpeakers().forEach(function (sp) {
+    var tracks = FameCore.tracksForSpeaker(info, sp);
+    var best = null;
+    info.clips.forEach(function (cl) {
+      if (tracks.indexOf(cl.track) < 0) return;
+      if (cl.type !== "audio" || !cl.path || !mimeForPath(cl.path)) return;
+      var len = cl.outPoint - cl.inPoint;
+      if (!best || len > best.len) best = { path: cl.path, len: len };
+    });
+    if (best) {
+      plan.push({ speaker: sp, path: best.path, name: sp + "__" + basename(best.path), mime: mimeForPath(best.path) });
+    } else missing.push(sp);
+  });
+  return { plan: plan, missing: missing };
+}
+
+function analyzeTimeline() {
+  if (!currentData) return;
+  if (!can("readTimeline")) { setStatus(DAW_LABEL + " is not connected - " + dawStatus.reason, "error"); return; }
+  setStatus("Reading your session…", "", true);
+  hands.getClips().then(function (info) {
+    clipsInfo = info;
+    var r = timelinePlan(info);
+    if (!r.plan.length) {
+      setStatus(r.missing.length
+        ? "Could not find a track for " + r.missing.join(", ") + " - name each speaker's track after them, then try again."
+        : "No speakers known for this episode yet - press Analyze audio first.", "error");
+      return;
+    }
+    var miss = r.missing.length ? " No track found for " + r.missing.join(", ") + ", so they will still come from the raw recordings." : "";
+    confirmInPanel(
+      "Analyse the audio on your timeline?",
+      ["Sends " + r.plan.length + " file(s) from your session to this episode's Raw Masters folder on Drive, then re-runs the analysis on them.",
+       "Use this when the raw recordings are quiet or noisy and the transcript came back inaccurate - your own cleaned audio transcribes far better.",
+       r.plan.map(function (f) { return f.speaker + ": " + basename(f.path); }).join("   ") + miss],
+      "Send and re-analyse",
+      function () { runTimelineUpload(r.plan); },
+    );
+  }).catch(function (e) { setStatus(e.message, "error"); });
+}
+
+function runTimelineUpload(plan) {
+  var slug = currentData.slug;
+  $("btn-analyze").disabled = true;
+  var i = 0;
+  function next() {
+    if (i >= plan.length) {
+      logChange("Uploaded " + plan.length + " speaker master(s) from the timeline to Raw Masters and re-analysed on them");
+      track("analyze");
+      setStatus("", "");
+      startCleanupAnalysis("Your own audio is uploaded. Transcribing it now - a few minutes, keep working.");
+      return;
+    }
+    var f = plan[i];
+    window.fame.fileSize(f.path).then(function (size) {
+      if (!size) throw new Error("Could not read " + basename(f.path) + " - is the file still where " + DAW_LABEL + " expects it?");
+      $("cl-sub").textContent = "Uploading " + basename(f.path) + " (" + (i + 1) + " of " + plan.length + ", " + (size / 1048576).toFixed(0) + " MB) to the episode's Raw Masters folder…";
+      return apiFetch("/raw-master-session", { method: "POST", body: { slug: slug, filename: f.name, size: size, mimeType: f.mime } })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Could not prepare the upload"); return j; }); })
+        .then(function (sess) {
+          // Bytes go from this machine straight to Drive, never through a
+          // Fame server - the same path every upload in here takes.
+          return window.fame.uploadFile({ filePath: f.path, sessionUri: sess.sessionUri, mimeType: f.mime });
+        });
+    }).then(function () { i++; next(); })
+      .catch(function (e) {
+        $("btn-analyze").disabled = false;
+        $("cl-sub").textContent = "Upload failed: " + e.message;
+      });
+  }
+  next();
 }
 
 function pollCleanupLoop() {
@@ -826,6 +943,16 @@ function renderCleanupWith(info, rawErr) {
     n2.className = "cl-notes";
     n2.textContent = "Note from the AM: " + pol.cleanupNotes;
     body.appendChild(n2);
+  }
+  // When the analysis read the untouched Riverside recordings, point at the
+  // better source - the editor's own audio - rather than waiting for them to
+  // wonder why a filler was misheard.
+  var readRaw = ((cleanupState && cleanupState.files) || []).some(function (f) { return /^riverside[_-]/i.test(f.name || ""); });
+  if (readRaw && cands.length && can("readTimeline")) {
+    var tip = document.createElement("div");
+    tip.className = "cl-notes";
+    tip.textContent = "This analysis read the untouched Riverside recordings. If your tracks hold cleaned or levelled audio, press \u201cAnalyze what's on my timeline\u201d - a transcript of processed audio mishears far fewer words, so fewer fillers are missed.";
+    body.appendChild(tip);
   }
   if (cleanupState && cleanupState.audioFromVideo) {
     var afv = document.createElement("div");
@@ -1151,6 +1278,7 @@ function muteOffMic() {
 }
 
 $("btn-analyze").onclick = function () { track("analyze"); startCleanupAnalysis(); };
+$("btn-analyze-timeline").onclick = analyzeTimeline;
 
 // ---------- Build audio assembly ----------
 // One track per speaker from the raw masters the ANALYSIS picked (so

@@ -7,6 +7,20 @@
   var ADMIN = window.__FAME_ADMIN_KEY__ || "";
   var origFetch = window.fetch;
   window.fetch = function (url, opts) {
+    // Writes are stubbed: a browser test must never start a real
+    // re-analysis (it costs a transcription and overwrites the cached one)
+    // or open an upload session on a client's Drive folder.
+    var method = ((opts && opts.method) || "GET").toUpperCase();
+    if (typeof url === "string" && method === "POST") {
+      if (url.indexOf("/api/panel/raw-master-session") >= 0) {
+        window.__fameCalls.push({ name: "raw-master-session", args: [JSON.parse(opts.body)] });
+        return Promise.resolve(new Response(JSON.stringify({ sessionUri: "https://stub.invalid/upload" }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
+      if (url.indexOf("/api/panel/cleanup") >= 0) {
+        window.__fameCalls.push({ name: "cleanup-post", args: [url] });
+        return Promise.resolve(new Response(JSON.stringify({ state: window.__fameLastState || { status: "transcribing", files: [] } }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
+    }
     if (typeof url === "string" && url.indexOf("https://review.fame.so/") === 0 && ADMIN) {
       opts = opts || {};
       var h = Object.assign({}, opts.headers || {});
@@ -64,7 +78,7 @@
     fileSize: function () { return Promise.resolve(12345678); },
     openExternal: function () { return Promise.resolve(); },
     showInFolder: function () { return Promise.resolve(); },
-    uploadFile: function (a) { calls.push({ name: "uploadFile", args: [a] }); return Promise.reject(new Error("stub: no bytes sent in the browser test")); },
+    uploadFile: function (a) { calls.push({ name: "uploadFile", args: [a] }); return Promise.resolve({ id: "stub-drive-file" }); },
     installUpdate: function () { return Promise.resolve(); },
     latestVersion: function () { return Promise.resolve({ version: "1.0.0", notes: "" }); },
     onUploadProgress: function () {},

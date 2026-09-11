@@ -112,6 +112,28 @@ async function main() {
     const m2 = core.mapCandidate({ speaker: "jason_hemingway", file: "jason.wav", startSec: 500, endSec: 500.4 }, ptClips);
     assert(m2 && m2.track === 1, JSON.stringify(m2));
   });
+  await check("a master uploaded from the timeline maps back to the file it came from", () => {
+    // "Analyze what's on my timeline" uploads "<speaker>__<file>", so the
+    // candidates come back named that way while the editor's own file is
+    // still called what it always was. Without stripping the prefix the
+    // very audio they just analysed reads as "not on timeline".
+    const tl = [
+      { id: "1", track: 0, trackName: "VO 1", name: "VS_processed", path: "/s/VS_processed.wav", type: "audio", start: 0, end: 1800, inPoint: 0, outPoint: 1800, rate: 1, muted: false },
+      { id: "2", track: 1, trackName: "VO 2", name: "KW_processed", path: "/s/KW_processed.wav", type: "audio", start: 0, end: 1800, inPoint: 0, outPoint: 1800, rate: 1, muted: false },
+    ];
+    const m = core.mapCandidate({ speaker: "vincent_swan", file: "vincent_swan__VS_processed.wav", startSec: 600, endSec: 600.3 }, tl);
+    assert(m && m.track === 0 && near(m.s, 600), JSON.stringify(m));
+    const m2 = core.mapCandidate({ speaker: "karina_welch", file: "karina_welch__KW_processed.wav", startSec: 600, endSec: 600.3 }, tl);
+    assert(m2 && m2.track === 1, JSON.stringify(m2));
+  });
+  await check("the prefix rule never collides two different files", () => {
+    // Stripping must not make one speaker's master match another's file.
+    assert.strictEqual(core.sameFile("vincent_swan__VS.wav", "KW.wav"), false);
+    assert.strictEqual(core.sameFile("VS.wav", "VS.wav"), true);
+    // A real filename that merely contains "__" is not a prefix match.
+    assert.strictEqual(core.sameFile("my__file.wav", "other.wav"), false);
+  });
+
   await check("unmappedReason says what was read, not just 'not on timeline'", () => {
     const info = { clips: [{ track: 0, trackName: "Music", name: "sting", path: "/m/sting.wav", start: 0, end: 5, inPoint: 0, outPoint: 5 }], trackNames: ["Music"], readErrors: [], noDefinition: 0 };
     const why = core.unmappedReason(info, [{ speaker: "joshua_spanier" }], "Pro Tools");

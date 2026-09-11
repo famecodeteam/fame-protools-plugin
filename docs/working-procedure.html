@@ -2,7 +2,7 @@
 <body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
 <h1>Fame Pro Tools Plugin Working Procedure</h1>
 <p><i>Everything the Plugin can do, in plain English - what each button does, where its information comes from, and what it will never do without you clicking a button. It is the Pro Tools counterpart to the Fame Reaper Plugin and the Fame Premiere Plugin: same brain on the server, Pro Tools' hands on the session.</i></p>
-<p><b>Version:</b> 1.1.3 (8 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Version:</b> 1.1.4 (11 September 2026). This document is updated in place - the link never changes.</p>
 <p><b>Install:</b> <a href="https://review.fame.so/protools">review.fame.so/protools</a>. Needs Pro Tools 2025.10 or newer, any tier. <b>Cubase editors use the same app</b> - see the <a href="https://docs.google.com/document/d/1dxACMDcwi14Aym_nNdno3tdDpA5AsEYn4cIWDqhnC_s/edit">Cubase working procedure</a>.</p>
 
 <h2>How the three systems fit together</h2>
@@ -37,6 +37,7 @@
 <li><b>Silence instead</b> (breaths, clicks, spoken-over fillers) clears the range from the speaker's own track(s) only - a gap, no ripple, session length unchanged. Use it wherever a ripple cut would clip the other person.</li>
 <li><b>Spoken over</b> items can only be silenced, never cut - cutting would clip the other speaker's words.</li>
 <li><b>Audio issues</b> lists dropouts, clicks and level problems the analysis found. <b>Fix levels</b> next to a speaker-imbalance warning writes the difference as volume automation on that speaker's track(s). It refuses over 30 dB - that is a broken or bleeding mic, not a fader problem. If the track had no volume automation, it assumes the fader sat at 0 dB and says so.</li>
+<li><b>Analyze what's on my timeline</b> is the one to reach for when the transcript comes back inaccurate. The normal analysis reads the untouched Riverside recordings from Drive, and those are sometimes very quiet or noisy - a transcript of quiet audio mishears words and misses fillers. This button sends the audio you are actually working with (one file per speaker, from your own disk) to the episode's Raw Masters folder and re-runs the analysis on that. You never open Drive, and the video editor gets the better analysis too.</li>
 <li><b>Build audio assembly</b> lays out each speaker's raw master on its own named track at 0, then applies the pre-ticked cuts and the level fix. It reads the files from the folder your session already points at, or asks you to pick it; it never downloads from Drive. Missing files are named, never assembled around.</li>
 </ul>
 
