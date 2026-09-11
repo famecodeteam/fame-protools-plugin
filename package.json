@@ -1,7 +1,7 @@
 {
   "name": "fame-protools-plugin",
   "productName": "Fame Pro Tools Plugin",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Fame Pro Tools Plugin - Asset Review Tool comments and the cleanup pass beside Pro Tools (Scripting SDK) or Cubase (track archives + MMC)",
   "main": "src/main.js",
   "private": true,
