@@ -81,6 +81,19 @@
     uploadFile: function (a) { calls.push({ name: "uploadFile", args: [a] }); return Promise.resolve({ id: "stub-drive-file" }); },
     installUpdate: function () { return Promise.resolve(); },
     latestVersion: function () { return Promise.resolve({ version: "1.0.0", notes: "" }); },
+    uninstallPlan: function () {
+      calls.push({ name: "uninstallPlan", args: [] });
+      return Promise.resolve({
+        platform: "darwin", packaged: true,
+        kept: ["Your Pro Tools or Cubase sessions, and every file in them", "Anything the Plugin bounced for you, including the \"Fame renders\" folders beside your sessions", "Everything already uploaded to the review tool or Drive"],
+        targets: [
+          { path: "/Users/andy/Library/Application Support/Fame Pro Tools Plugin", label: "Your sign-in, recent episodes and settings", kind: "data", bytes: 2400000 },
+          { path: "/Users/andy/Library/Caches/so.fame.protools-plugin", label: "Cache", kind: "cache", bytes: 812000 },
+          { path: "/Applications/Fame Pro Tools Plugin.app", label: "The app itself", kind: "app", bytes: 240000000 },
+        ],
+      });
+    },
+    uninstall: function () { calls.push({ name: "uninstall", args: [] }); return Promise.resolve({ removed: ["a", "b", "c"], failed: [], handOff: null }); },
     onUploadProgress: function () {},
     onUpdate: function () {},
   };

@@ -10,6 +10,7 @@ const core = require("../src/core/mapping");
 const { MockSession, startMockServer } = require("./mock-ptsl-server");
 const { ProToolsHands } = require("../hands/protools");
 const { assertHands } = require("../hands/interface");
+const { uninstallTargets, macAppBundle, KEPT } = require("../src/uninstall");
 
 const FIX = path.join(__dirname, "fixtures");
 const OUT = path.join(__dirname, "out");
@@ -142,6 +143,81 @@ async function main() {
   await check("unmappedReason names the read failure when no clips came back", () => {
     const why = core.unmappedReason({ clips: [], readErrors: ["V1: Pro Tools refused GetPlaylistElements."], trackNames: ["V1"] }, [], "Pro Tools");
     assert(/would not report the clips/.test(why) && /GetPlaylistElements/.test(why), why);
+  });
+
+  console.log("uninstall");
+  const MAC = {
+    platform: "darwin", home: "/Users/andy",
+    userData: "/Users/andy/Library/Application Support/Fame Pro Tools Plugin",
+    logs: "/Users/andy/Library/Logs/Fame Pro Tools Plugin",
+    exePath: "/Applications/Fame Pro Tools Plugin.app/Contents/MacOS/Fame Pro Tools Plugin",
+    appName: "Fame Pro Tools Plugin", bundleId: "so.fame.protools-plugin",
+  };
+  await check("finds the .app bundle from the running executable", () => {
+    assert.strictEqual(macAppBundle(MAC.exePath), "/Applications/Fame Pro Tools Plugin.app");
+    assert.strictEqual(macAppBundle("/usr/local/bin/electron"), null);
+  });
+  await check("lists every place a Mac install leaves something, the app last", () => {
+    const t = uninstallTargets(MAC);
+    const paths = t.map((x) => x.path);
+    [
+      "/Users/andy/Library/Application Support/Fame Pro Tools Plugin",
+      "/Users/andy/Library/Logs/Fame Pro Tools Plugin",
+      "/Users/andy/Library/Caches/so.fame.protools-plugin",
+      "/Users/andy/Library/Caches/so.fame.protools-plugin-updater",
+      "/Users/andy/Library/Preferences/so.fame.protools-plugin.plist",
+      "/Users/andy/Library/Saved Application State/so.fame.protools-plugin.savedState",
+      "/Applications/Fame Pro Tools Plugin.app",
+    ].forEach((p) => assert(paths.indexOf(p) >= 0, "missing " + p + " from " + JSON.stringify(paths)));
+    // Exactly one thing is the app itself, and nothing outside the user's
+    // own Library or Applications is ever touched.
+    paths.forEach((p) => assert(/^\/(Users\/andy|Applications)\//.test(p), "would reach outside the user's own files: " + p));
+  });
+  await check("picks up what the rename to \"Plugin\" left behind", () => {
+    // Found on a real machine: ~/Library/Application Support/Fame Pro Tools
+    // Companion, orphaned when the app was renamed on day one. Exactly the
+    // hidden leftover this whole feature exists to spare an editor.
+    const paths = uninstallTargets(MAC).map((x) => x.path);
+    assert(paths.indexOf("/Users/andy/Library/Application Support/Fame Pro Tools Companion") >= 0, JSON.stringify(paths));
+    assert(paths.indexOf("/Users/andy/Library/Caches/so.fame.protools-companion") >= 0);
+    assert(paths.indexOf("/Applications/Fame Pro Tools Companion.app") >= 0);
+    // Two apps listed now - the current one and the old one - and nothing else.
+    assert.strictEqual(uninstallTargets(MAC).filter((x) => x.kind === "app").length, 2);
+  });
+  await check("a dev run never offers to trash Electron itself", () => {
+    // exePath in development is node_modules/electron/dist/Electron.app -
+    // listing that as "the app itself" would take out the toolchain.
+    const dev = Object.assign({}, MAC, {
+      packaged: false,
+      exePath: "/Users/andy/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+    });
+    const t = uninstallTargets(dev);
+    assert.strictEqual(t.filter((x) => x.kind === "app").length, 0, JSON.stringify(t.map((x) => x.path)));
+    assert(!t.some((x) => /^\/Applications\//.test(x.path)), "offered to trash something in Applications from a dev run");
+    assert(!t.some((x) => /node_modules/.test(x.path)), "reached into node_modules");
+    // Its own data is still removable.
+    assert(t.some((x) => x.path === MAC.userData));
+  });
+  await check("never lists the same folder twice", () => {
+    const same = Object.assign({}, MAC, { logs: MAC.userData });
+    const paths = uninstallTargets(same).map((x) => x.path);
+    assert.strictEqual(new Set(paths).size, paths.length, JSON.stringify(paths));
+  });
+  await check("a Windows install hands the app itself to the NSIS uninstaller", () => {
+    const t = uninstallTargets({
+      platform: "win32", home: "C:\\Users\\andy",
+      userData: "C:\\Users\\andy\\AppData\\Roaming\\Fame Pro Tools Plugin",
+      logs: "C:\\Users\\andy\\AppData\\Roaming\\Fame Pro Tools Plugin\\logs",
+      exePath: "C:\\Users\\andy\\AppData\\Local\\Programs\\Fame Pro Tools Plugin\\Fame Pro Tools Plugin.exe",
+      appName: "Fame Pro Tools Plugin", bundleId: "so.fame.protools-plugin",
+    });
+    assert(t.some((x) => x.kind === "app"), "no app entry");
+    // No Mac paths leak into a Windows plan.
+    assert(!t.some((x) => /Library/.test(x.path)), JSON.stringify(t.map((x) => x.path)));
+  });
+  await check("the promise about what is kept names renders, sessions and uploads", () => {
+    const all = KEPT.join(" ").toLowerCase();
+    assert(/session/.test(all) && /fame renders/.test(all) && /drive|upload/.test(all), all);
   });
 
   console.log("pro tools adapter against the mock PTSL server");

@@ -12,6 +12,7 @@ const path = require("path");
 const fs = require("fs");
 const https = require("https");
 const { URL } = require("url");
+const { uninstallTargets, windowsUninstaller, KEPT } = require("./uninstall");
 const { ProToolsHands } = require("../hands/protools");
 const { CubaseHands } = require("../hands/cubase");
 const { assertHands } = require("../hands/interface");
@@ -138,6 +139,77 @@ ipcMain.handle("app:uploadFile", (ev, { filePath, sessionUri, mimeType }) => new
   });
   stream.pipe(req);
 }));
+
+// ---------- uninstall ----------
+//
+// The second Pro Tools AE would not install it without one: "Not having a
+// uninstall option means finding hidden files buried in terminals." So the
+// app can take itself off the machine - it shows the real list first, with
+// sizes, and moves everything to the Trash rather than deleting outright,
+// so a change of mind costs nothing.
+
+function uninstallEnv() {
+  return {
+    platform: process.platform,
+    home: app.getPath("home"),
+    userData: app.getPath("userData"),
+    logs: app.getPath("logs"),
+    exePath: app.getPath("exe"),
+    appName: app.getName(),
+    bundleId: "so.fame.protools-plugin",
+    packaged: app.isPackaged,
+  };
+}
+
+function dirSize(p) {
+  let total = 0;
+  try {
+    const st = fs.statSync(p);
+    if (!st.isDirectory()) return st.size;
+    for (const name of fs.readdirSync(p)) total += dirSize(path.join(p, name));
+  } catch (e) { /* unreadable or gone - counts as nothing */ }
+  return total;
+}
+
+ipcMain.handle("app:uninstallPlan", () => {
+  const env = uninstallEnv();
+  const targets = uninstallTargets(env)
+    .filter((t) => fs.existsSync(t.path))
+    .map((t) => ({ ...t, bytes: dirSize(t.path) }));
+  return { targets, kept: KEPT, platform: env.platform, packaged: app.isPackaged };
+});
+
+ipcMain.handle("app:uninstall", async () => {
+  const env = uninstallEnv();
+  const targets = uninstallTargets(env).filter((t) => fs.existsSync(t.path));
+  const removed = [];
+  const failed = [];
+  // The app bundle goes last: while it is still there, a failure earlier on
+  // leaves a working app the editor can retry from.
+  const ordered = [...targets.filter((t) => t.kind !== "app"), ...targets.filter((t) => t.kind === "app")];
+  for (const t of ordered) {
+    if (process.platform === "win32" && t.kind === "app") continue; // the NSIS uninstaller owns this
+    try {
+      await shell.trashItem(t.path);
+      removed.push(t.path);
+    } catch (e) {
+      failed.push({ path: t.path, error: e.message });
+    }
+  }
+  let handOff = null;
+  if (process.platform === "win32") {
+    const un = windowsUninstaller(env);
+    if (fs.existsSync(un)) {
+      // Detached, so it can remove the app after this process exits.
+      try {
+        require("child_process").spawn(un, [], { detached: true, stdio: "ignore" }).unref();
+        handOff = "the Windows uninstaller";
+      } catch (e) { failed.push({ path: un, error: e.message }); }
+    }
+  }
+  if (!failed.length) setTimeout(() => app.quit(), 2500);
+  return { removed, failed, handOff };
+});
 
 // Auto-update: GitHub Releases feed (electron-updater). Quiet on failure -
 // a version check must never block the editor.

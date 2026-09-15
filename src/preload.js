@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld("fame", {
   uploadFile: (args) => unwrap(ipcRenderer.invoke("app:uploadFile", args)),
   installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
   latestVersion: (url) => ipcRenderer.invoke("app:latestVersion", url),
+  uninstallPlan: () => ipcRenderer.invoke("app:uninstallPlan"),
+  uninstall: () => ipcRenderer.invoke("app:uninstall"),
   onUploadProgress: (cb) => { ipcRenderer.on("upload:progress", (ev, d) => cb(d)); },
   onUpdate: (cb) => {
     ipcRenderer.on("update:available", (ev, d) => cb("available", d));

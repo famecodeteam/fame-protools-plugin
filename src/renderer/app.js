@@ -2098,6 +2098,58 @@ $("btn-diag").onclick = function () {
   }).catch(function (e) { setStatus(e.message, "error"); });
 };
 
+// ---------- uninstall ----------
+//
+// Andy, before he would install it at all: "I dont see an option when i
+// install to completely uninstall the plugin if its buggy... I will mean a
+// complete reinstall of all my software which will take a day or two."
+// So: show him the real list, then move it all to the Trash.
+
+function fmtBytes(n) {
+  if (!n) return "";
+  if (n < 1024 * 1024) return Math.max(1, Math.round(n / 1024)) + " KB";
+  return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+}
+
+function showUninstall() {
+  window.fame.uninstallPlan().then(function (plan) {
+    var host = $("cl-body") && $("cleanup").className !== "hidden" ? $("cl-body") : $("view-main");
+    var lines = [];
+    if (!plan.packaged) lines.push("This is a development build, so the app itself is not in Applications - only its data is listed.");
+    lines.push("This is a normal app, not an AAX plug-in: it has installed nothing into Pro Tools or Cubase, added no startup item, and changed nothing about your system. Everything it has put on this machine is here:");
+    (plan.targets || []).forEach(function (t) {
+      lines.push("\u2022 " + t.label + (t.bytes ? " (" + fmtBytes(t.bytes) + ")" : "") + " - " + t.path);
+    });
+    if (!(plan.targets || []).length) lines.push("Nothing left to remove - it is already off this machine.");
+    lines.push("Kept, untouched: " + (plan.kept || []).join("; ") + ".");
+    lines.push(plan.platform === "win32"
+      ? "Everything goes to the Recycle Bin, then Windows' own uninstaller finishes the job."
+      : "Everything goes to the Trash, so you can put it back if you change your mind. The app will quit when it is done.");
+    confirmInPanel(
+      "Remove the Fame " + DAW_LABEL + " Plugin from this machine?",
+      lines,
+      "Remove it",
+      function () { runUninstall(); },
+      host,
+    );
+  }).catch(function (e) { setStatus("Could not work out what to remove: " + e.message, "error"); });
+}
+
+function runUninstall() {
+  setStatus("Removing\u2026", "", true);
+  window.fame.uninstall().then(function (r) {
+    if (r.failed && r.failed.length) {
+      setStatus("Removed " + r.removed.length + " item(s), but could not remove " + r.failed[0].path +
+        " (" + r.failed[0].error + "). Drag that one to the Trash yourself and it is fully gone.", "error");
+      return;
+    }
+    setStatus("Removed " + r.removed.length + " item(s)" + (r.handOff ? ", handing over to " + r.handOff : "") +
+      ". Thanks for trying it - the app will quit now.", "ok");
+  }).catch(function (e) { setStatus("Uninstall failed: " + e.message, "error"); });
+}
+
+$("btn-uninstall").onclick = showUninstall;
+
 // ---------- views + wiring ----------
 
 function showView(which) {
