@@ -2,7 +2,7 @@
 <body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
 <h1>Fame Cubase Plugin Working Procedure</h1>
 <p><i>Everything the Plugin can do on Cubase, in plain English - what each button does, where its information comes from, what it writes for you, and what it will never do without you clicking a button. It is the Cubase counterpart to the Fame Reaper Plugin and the Fame Pro Tools Plugin: same brain on the server, Cubase's hands on your project.</i></p>
-<p><b>Version:</b> 1.1.0 (8 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Version:</b> 1.1.7 (15 September 2026). This document is updated in place - the link never changes.</p>
 <p><b>Install:</b> <a href="https://review.fame.so/cubase">review.fame.so/cubase</a>. Cubase Pro, Artist or Elements on Mac or Windows. The same app also drives Pro Tools; you choose Cubase once at sign-in.</p>
 
 <h2>The one thing to understand first</h2>
@@ -90,6 +90,11 @@
 <li>It never uploads until you press Upload, and every action shows an in-app confirmation first.</li>
 <li>It never touches Drive to read media - the raw files come from your disk.</li>
 </ul>
+
+<h2>Getting it off your machine</h2>
+<p><b>Uninstall</b> at the bottom of the Plugin lists every file it has put on your machine, with sizes, then moves all of it to the Trash and quits - the app, your sign-in, its settings and its caches. Nothing to hunt for, and nothing is deleted outright, so you can put it back from the Trash if you change your mind.</p>
+<p>It never touches your Cubase projects, your exchange folder, anything it wrote for you, or anything already uploaded.</p>
+<p>Worth knowing: this is a normal app. It installs nothing into Cubase, adds no startup item, and the virtual MIDI port it uses exists only while it is running.</p>
 
 <h2>When something looks wrong</h2>
 <p>Press <b>Diagnostics</b> at the bottom, then <b>Copy for Tom</b> and paste it to Tom. It contains what the Plugin found in your export (tracks, events, the fields it recognised), the MIDI port and the last MMC messages sent. The archive reader was built on real Cubase exports of marker tracks plus an assumed shape for audio events, so your first export is the fixture: if the app says it does not recognise the events, the fix is a field name, not a rebuild, and Diagnostics is exactly what makes it a ten-minute fix.</p>
