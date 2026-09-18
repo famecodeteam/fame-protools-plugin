@@ -279,6 +279,36 @@ async function main() {
     assert(info.clips.length >= 4, info.clips.length + " clips");
     assert(info.raw.sessionTextBytes > 200, "no session text came back");
   });
+  await check("asks about the private API once, not once per track", async () => {
+    // The second AE, mid-trial: "the reading your session is taking a long
+    // time". Every track was being asked for its playlist and every one was
+    // refused, so a 20-track session paid for 20 pointless round trips on
+    // every single read.
+    const many = new MockSession({ folder: path.join(OUT, "many"), sampleRate: 48000 });
+    const fid = many.addFile(path.join(raw, denisFile));
+    for (let i = 0; i < 20; i++) many.addTrack("T" + i, [{ start: 0, end: 300, fileId: fid, srcStart: 0 }]);
+    const s4 = await startMockServer(many);
+    const h4 = new ProToolsHands({ address: "127.0.0.1:" + s4.port, timeoutMs: 5000 });
+    const info = await h4.getClips();
+    const asked = many.log.filter((c) => c === "GetTrackPlaylists").length;
+    assert.strictEqual(asked, 1, "asked " + asked + " times");
+    assert.strictEqual(h4.playlistApi, false);
+    assert.strictEqual(info.clips.length, 20, info.clips.length + " clips");
+    // A second read does not ask again at all.
+    many.log.length = 0;
+    await h4.getClips();
+    assert.strictEqual(many.log.filter((c) => c === "GetTrackPlaylists").length, 0, "asked again on the next read");
+    s4.close();
+  });
+  await check("says what it is doing while a long read runs", async () => {
+    const notes = [];
+    const h5 = new ProToolsHands({ address: "127.0.0.1:" + srv.port, timeoutMs: 5000 });
+    h5.on("note", (t) => notes.push(t));
+    await h5.getClips();
+    assert(notes.length >= 2, JSON.stringify(notes));
+    assert(notes.some((n) => /track layout/.test(n)), JSON.stringify(notes));
+  });
+
   await check("uses the playlist route instead when the private API is granted", async () => {
     const granted = new MockSession({ folder: path.join(OUT, "granted"), privateApi: true });
     const f1 = granted.addFile(path.join(raw, denisFile));

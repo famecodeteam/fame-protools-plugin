@@ -2077,7 +2077,9 @@ $("btn-diag").onclick = function () {
     h.className = "cl-group-head";
     h.textContent = "Diagnostics - " + DAW_LABEL + " " + (d.status.dawVersion || (d.status.connected ? "" : "not connected")) + ", app " + APP_VERSION;
     box.appendChild(h);
-    var summary = d.clips ? (d.clips.clips.length + " clip(s) on " + d.clips.tracks + " track(s), " + d.clips.sampleRate + " Hz, session \"" + d.clips.sessionName + "\"") : (d.error || d.status.reason || "");
+    var t = (d.raw && d.raw.timings) || {};
+    var summary = d.clips ? (d.clips.clips.length + " clip(s) on " + d.clips.tracks + " track(s), " + d.clips.sampleRate + " Hz, session \"" + d.clips.sessionName + "\"" +
+      (t.total ? " - read in " + (t.total / 1000).toFixed(1) + "s" + (t.sessionText ? " (" + (t.sessionText / 1000).toFixed(1) + "s of it the track layout)" : "") : "")) : (d.error || d.status.reason || "");
     var s = document.createElement("div");
     s.className = "cl-notes";
     s.textContent = summary;

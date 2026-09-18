@@ -22,6 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { EventEmitter } = require("events");
 const os = require("os");
 const { PtslClient, PtslError, STATUS } = require("./ptsl-client");
 const { CAPABILITIES } = require("../interface");
@@ -114,13 +115,22 @@ function enumNumber(value, fallback) {
 
 const { measure } = require("../common");
 
-class ProToolsHands {
+class ProToolsHands extends EventEmitter {
   constructor(opts) {
+    super();
     this.daw = "protools";
     this.client = new PtslClient(opts);
     this.raw = {}; // last answers, for diagnostics
     this.sampleRate = 0;
+    // null = not asked yet, false = Pro Tools refused it (no Avid key), true
+    // = granted. Asking again for every track of every read is pure latency:
+    // the answer cannot change inside one connection.
+    this.playlistApi = null;
   }
+
+  // Progress for the panel: reading a long session is slow enough that a
+  // silent window reads as a hang, which is how the second AE found it.
+  note(text) { this.emit("note", text); }
 
   // ----- connection -----
 
@@ -200,7 +210,10 @@ class ProToolsHands {
   // clip's source range, joined by clip name.
   async _sessionText() {
     const r = await this.client.send("ExportSessionInfoAsText", {
-      include_file_list: true,
+      // Not needed: every clip carries a file_id and GetFileLocation
+      // resolves it. On a long session this section alone is thousands of
+      // lines for Pro Tools to write and for us to carry.
+      include_file_list: false,
       include_clip_list: false,
       include_markers: false,
       include_plugin_list: false,
@@ -230,14 +243,22 @@ class ProToolsHands {
       this.client.send("GetSessionName", null).catch(() => ({})),
       this.client.send("GetSessionPath", null).catch(() => ({})),
     ]);
-    const tracks = await this._tracks();
+    const t0 = Date.now();
+    const timings = {};
+    const timed = async (name, fn) => {
+      const at = Date.now();
+      try { return await fn(); } finally { timings[name] = Date.now() - at; }
+    };
+    this.note("Reading your session\u2026 tracks");
+    const tracks = await timed("tracks", () => this._tracks());
     // A heavily edited session holds far more clips than tracks - 85 across
     // two tracks in the first real session - so page until the server's own
     // total is in hand rather than trusting one request.
+    this.note("Reading your session\u2026 clips");
     const defs = {};
     let clipsSeen = 0, clipTotal = 0;
     for (let offset = 0; offset < MAX_CLIPS; offset += PAGE.limit) {
-      const page = await this.client.send("GetClipList", { pagination_request: { limit: PAGE.limit, offset } });
+      const page = await timed("clips", () => this.client.send("GetClipList", { pagination_request: { limit: PAGE.limit, offset } }));
       if (!offset) this.raw.clipList = page;
       const got = listOf(page, "clip_list", "clips");
       got.forEach((c) => { defs[c.clip_id] = c; });
@@ -246,9 +267,13 @@ class ProToolsHands {
       if (!got.length || clipsSeen >= clipTotal) break;
     }
     const truncated = clipTotal > clipsSeen;
+    // Only the files actually used on the timeline - the set the clips join
+    // to, and far smaller than every file ever imported on a long session.
     const fileR = await this.client.send("GetFileLocation", {
+      page_limit: PAGE.limit, file_filters: ["OnTimeline_Files"], pagination_request: PAGE,
+    }).catch(() => this.client.send("GetFileLocation", {
       page_limit: PAGE.limit, file_filters: ["All_Files"], pagination_request: PAGE,
-    }).catch(() => ({ file_locations: [] }));
+    }).catch(() => ({ file_locations: [] })));
     this.raw.fileLocations = fileR;
     const paths = {};
     listOf(fileR, "file_locations", "file_location_list").forEach((f) => { if (f.file_id) paths[f.file_id] = f.path || ""; });
@@ -265,16 +290,26 @@ class ProToolsHands {
       // going to carry the conversation.
       if (t.hasClips === false) continue;
       let pl;
+      // Refused once is refused for every track on this connection.
+      if (this.playlistApi === false) break;
       try {
         // ONE selector only. Pro Tools rejects a request carrying both with
         // "Only one of 'track_id' and 'track_name' must be defined" - the
         // fault behind every row reading "not on timeline" in the first
         // real session. The id is the safe choice: track names repeat.
         pl = await this.client.send("GetTrackPlaylists", { track_id: t.id, pagination_request: PAGE });
+        this.playlistApi = true;
       } catch (e) {
         // Never swallow this. The first field report was every candidate
         // reading "not on timeline", and a silent `continue` here looks
-        // exactly like a session with no clips in it.
+        // exactly like a session with no clips in it. The private-API
+        // refusal is the exception: it is expected on every install without
+        // an Avid key, and asking the other twenty tracks only to be
+        // refused twenty more times is latency the editor sits through.
+        if (/private api/i.test(e.message)) {
+          this.playlistApi = false;
+          break;
+        }
         readErrors.push(t.name + ": " + e.message);
         continue;
       }
@@ -342,7 +377,8 @@ class ProToolsHands {
     // the public text export, which needs one call and no permission.
     if (!clips.length) {
       try {
-        const text = await this._sessionText();
+        this.note("Reading your session\u2026 asking Pro Tools for the track layout (the slow part on a long session)");
+        const text = await timed("sessionText", () => this._sessionText());
         this.raw.sessionTextBytes = text.length;
         const byIndex = {};
         tracks.forEach((t) => { if (byIndex[t.name] === undefined) byIndex[t.name] = t.index; });
@@ -391,6 +427,13 @@ class ProToolsHands {
       }
     } else {
       this.raw.readVia = "playlist elements";
+    }
+    timings.total = Date.now() - t0;
+    // What a "why is this slow" report needs: which call took the time.
+    this.raw.timings = timings;
+    if (timings.total > 8000) {
+      this.note("Reading your session took " + Math.round(timings.total / 1000) + "s" +
+        (timings.sessionText ? " (" + Math.round(timings.sessionText / 1000) + "s of it waiting on Pro Tools for the layout)" : ""));
     }
     this.raw.readErrors = readErrors;
     this.raw.noDefinition = noDefinition;

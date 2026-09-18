@@ -38,10 +38,14 @@ function selectHands(daw) {
   if (daw === "cubase") {
     const st = readSettings();
     hands = assertHands(new CubaseHands({ settings: st.cubase || {}, save: (c) => writeSettings({ cubase: c }) }));
-    hands.on("note", (text) => { if (win) win.webContents.send("hands:note", text); });
   } else {
     daw = "protools";
     hands = assertHands(new ProToolsHands());
+  }
+  // Both adapters report progress the same way - reading a long session is
+  // slow enough that a silent panel reads as a hang.
+  if (typeof hands.on === "function") {
+    hands.on("note", (text) => { if (win) win.webContents.send("hands:note", text); });
   }
   writeSettings({ daw });
   if (win) win.setTitle(daw === "cubase" ? "Fame Cubase Plugin" : "Fame Pro Tools Plugin");
