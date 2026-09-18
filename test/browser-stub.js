@@ -72,10 +72,16 @@
     onNote: function (cb) { window.__fameNote = cb; },
     openPath: function (p) { calls.push({ name: "openPath", args: [p] }); return Promise.resolve(""); },
     info: function () { return Promise.resolve({ version: "1.0.0", platform: "darwin", arch: "arm64" }); },
-    pickFile: function () { return Promise.resolve("/sessions/dms27/bounce.mp3"); },
+    pickFile: function (opts) {
+      calls.push({ name: "pickFile", args: [opts] });
+      if (opts && opts.multi) {
+        return Promise.resolve(["/masters/host.wav", "/masters/guest.wav", "/masters/guest2.wav"]);
+      }
+      return Promise.resolve("/sessions/dms27/bounce.mp3");
+    },
     pickFolder: function (o) { return Promise.resolve(o && /exchange/i.test(o.title || "") ? "/Users/anton/Fame exchange" : "/raw"); },
     listDir: function (d) { return Promise.resolve(d === "/raw" ? [denis, nathan] : []); },
-    fileSize: function () { return Promise.resolve(12345678); },
+    fileSize: function (p) { return Promise.resolve(/guest2/.test(p) ? 0 : 12345678); },
     openExternal: function () { return Promise.resolve(); },
     showInFolder: function () { return Promise.resolve(); },
     uploadFile: function (a) { calls.push({ name: "uploadFile", args: [a] }); return Promise.resolve({ id: "stub-drive-file" }); },

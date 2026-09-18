@@ -86,12 +86,17 @@ ipcMain.handle("app:openPath", (ev, p) => shell.openPath(p));
 ipcMain.handle("app:info", () => ({ version: app.getVersion(), platform: process.platform, arch: process.arch }));
 
 ipcMain.handle("app:pickFile", async (ev, opts) => {
+  // `multi` returns every chosen path: a raw-master hand-off is host and
+  // guest at the very least, and picking them one at a time is the kind of
+  // repetition this app exists to remove.
+  const multi = !!(opts && opts.multi);
   const r = await dialog.showOpenDialog(win, {
     title: (opts && opts.title) || "Choose a file",
-    properties: ["openFile"],
+    properties: multi ? ["openFile", "multiSelections"] : ["openFile"],
     filters: (opts && opts.filters) || [{ name: "Audio", extensions: ["mp3", "wav", "aif", "aiff", "m4a", "flac"] }],
   });
-  return r.canceled ? null : r.filePaths[0];
+  if (r.canceled || !r.filePaths.length) return multi ? [] : null;
+  return multi ? r.filePaths : r.filePaths[0];
 });
 ipcMain.handle("app:pickFolder", async (ev, opts) => {
   const r = await dialog.showOpenDialog(win, { title: (opts && opts.title) || "Choose a folder", properties: ["openDirectory"] });

@@ -1703,7 +1703,19 @@ function renderDeliverCard() {
   rm.textContent = "Raw master - for the video editor (not a client version)";
   if (upload.assetId === RAW_MASTER) rm.selected = true;
   sel.appendChild(rm);
-  sel.onchange = function () { upload.assetId = sel.value; renderDeliverCard(); };
+  sel.onchange = function () {
+    upload.assetId = sel.value;
+    // A set of stems chosen for Raw Masters is not a client version, and
+    // vice versa - clear the selection rather than upload it to the wrong
+    // place.
+    upload.files = null;
+    upload.fileList = null;
+    upload.file = null;
+    upload.measured = null;
+    upload.preflight = null;
+    upload.worst = null;
+    uploadStage("idle", "");
+  };
   host.appendChild(sel);
 
   var busy = upload.stage === "rendering" || upload.stage === "measuring" || upload.stage === "preflight" || upload.stage === "uploading";
@@ -1733,8 +1745,16 @@ function renderDeliverCard() {
   choose.textContent = "Choose a bounced file…";
   choose.disabled = busy;
   choose.title = FILE_BASED ? "Exported somewhere else? Pick the file and it gets the same checks." : "Already bounced with your own chain? Pick the file and it gets the same checks.";
-  choose.textContent = FILE_BASED ? "Choose an exported file…" : "Choose a bounced file…";
+  choose.textContent = upload.assetId === RAW_MASTER
+    ? "Choose the raw master files…"
+    : (FILE_BASED ? "Choose an exported file…" : "Choose a bounced file…");
   choose.onclick = function () {
+    if (upload.assetId === RAW_MASTER) {
+      window.fame.pickFile({ title: "Choose the raw master files", multi: true }).then(function (paths) {
+        if (paths && paths.length) prepareRawMasters(paths);
+      });
+      return;
+    }
     window.fame.pickFile({ title: "Choose the bounced audio master" }).then(function (p) { if (p) prepareUpload(p); });
   };
   row.appendChild(choose);
@@ -1767,7 +1787,19 @@ function renderDeliverCard() {
     pr.appendChild(bar);
     host.appendChild(pr);
   }
-  if (upload.file && upload.measured && (upload.stage === "ready" || upload.stage === "uploading" || upload.stage === "done")) {
+  if (upload.assetId === RAW_MASTER && upload.fileList && upload.fileList.length > 1) {
+    upload.fileList.forEach(function (f) {
+      var d = document.createElement("div");
+      d.className = "d-meas";
+      d.textContent = basename(f.path) + " - " + (f.bytes / 1048576).toFixed(0) + " MB";
+      host.appendChild(d);
+    });
+  }
+  // A batch of raw masters is deliberately not measured, so the button
+  // cannot hang off a measurement the way a single deliverable's does.
+  var batch = upload.assetId === RAW_MASTER && upload.files && upload.files.length > 1;
+  var staged = upload.stage === "ready" || upload.stage === "uploading" || upload.stage === "done";
+  if (upload.file && upload.measured && staged) {
     var me = upload.measured;
     var meas = document.createElement("div");
     meas.className = "d-meas";
@@ -1788,16 +1820,17 @@ function renderDeliverCard() {
       d.appendChild(document.createTextNode(r.message || r.label || ""));
       host.appendChild(d);
     });
-    if (upload.stage === "ready") {
-      var go = document.createElement("button");
-      go.className = "btn-primary";
-      go.style.marginTop = "8px";
-      go.textContent = upload.assetId === RAW_MASTER
-        ? "Send to Raw Masters"
-        : (upload.worst === "fail" ? "Upload anyway" : "Upload as v" + nextVersionLabel(upload.assetId));
-      go.onclick = doUpload;
-      host.appendChild(go);
-    }
+  }
+  if (upload.stage === "ready" && ((upload.file && upload.measured) || batch)) {
+    var go = document.createElement("button");
+    go.className = "btn-primary";
+    go.style.marginTop = "8px";
+    var n = (upload.files && upload.files.length) || 1;
+    go.textContent = upload.assetId === RAW_MASTER
+      ? (n > 1 ? "Send " + n + " files to Raw Masters" : "Send to Raw Masters")
+      : (upload.worst === "fail" ? "Upload anyway" : "Upload as v" + nextVersionLabel(upload.assetId));
+    go.onclick = doUpload;
+    host.appendChild(go);
   }
   if (music) {
     (music.rows || []).forEach(function (r) {
@@ -1942,32 +1975,77 @@ window.fame.onNote(function (text) {
   else setStatus(text, "", true);
 });
 
+// A hand-off to the VE is host and guest at minimum, often more stems, so
+// the picker takes several. Measuring each one would mean decoding every
+// file in full - minutes for a set of hour-long stems - and loudness is not
+// what anyone checks a stem for, so a batch is listed rather than measured.
+// A single file still gets its measurement, which is the useful case.
+function prepareRawMasters(paths) {
+  if (paths.length === 1) return prepareUpload(paths[0]);
+  upload.files = paths.slice();
+  upload.file = paths[0];
+  upload.measured = null;
+  upload.preflight = [];
+  upload.worst = null;
+  Promise.all(paths.map(function (p) {
+    return window.fame.fileSize(p).then(function (b) { return { path: p, bytes: b }; });
+  })).then(function (list) {
+    upload.fileList = list;
+    var total = list.reduce(function (a, f) { return a + f.bytes; }, 0);
+    uploadStage("ready", list.length + " files ready (" + (total / 1048576).toFixed(0) + " MB). They go to this episode's Raw Masters folder as they are - no client checks, nothing sent for review.");
+  }).catch(function (e) { uploadStage("idle", e.message); });
+}
+
 // The raw master goes to the episode's Raw Masters folder on Drive - the
 // same door "Analyze what's on my timeline" uses - and creates no client
 // version, because nobody is reviewing it. Named with the speaker-free
 // "<slug>-raw-master" prefix so the VE can see what it is at a glance.
+function mimeForMaster(p) {
+  return /\.wav$/i.test(p) ? "audio/wav"
+    : /\.aiff?$/i.test(p) ? "audio/aiff"
+    : /\.flac$/i.test(p) ? "audio/flac"
+    : /\.m4a$/i.test(p) ? "audio/mp4"
+    : "audio/mpeg";
+}
+
 function doRawMasterUpload() {
   var slug = currentData.slug;
-  var mime = /\.wav$/i.test(upload.file) ? "audio/wav" : "audio/mpeg";
-  var name = basename(upload.file);
-  uploadStage("uploading", "Preparing the upload…");
+  var files = (upload.files && upload.files.length ? upload.files : [upload.file]).slice();
   track("upload");
-  var size = 0;
-  window.fame.fileSize(upload.file).then(function (sz) {
-    size = sz;
-    if (!size) throw new Error("The file is empty or unreadable.");
-    return apiFetch("/raw-master-session", { method: "POST", body: { slug: slug, filename: name, size: size, mimeType: mime } });
-  }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Could not prepare the upload"); return j; }); })
-    .then(function (session) {
-      uploadStage("uploading", "Sending " + name + " (" + (size / 1048576).toFixed(1) + " MB) to this episode's Raw Masters folder - keep the app open…");
-      return window.fame.uploadFile({ filePath: upload.file, sessionUri: session.sessionUri, mimeType: mime });
-    })
-    .then(function () {
-      logChange("Sent " + name + " to the episode's Raw Masters folder for the video editor");
-      playDone();
-      uploadStage("done", name + " is in this episode's Raw Masters folder on Drive. The video editor can pick it up - it is not a client version, so nothing has gone for review.");
-    })
-    .catch(function (e) { uploadStage("ready", "Upload failed: " + e.message); });
+  var done = [];
+  var failed = [];
+
+  function sendOne(i) {
+    if (i >= files.length) {
+      if (done.length) {
+        logChange("Sent " + done.length + " raw master file(s) to the episode's Raw Masters folder for the video editor: " + done.join(", "));
+        playDone();
+      }
+      var msg = done.length
+        ? done.length + " file(s) are in this episode's Raw Masters folder on Drive. The video editor can pick them up - no client version was created, so nothing has gone for review."
+        : "Nothing was uploaded.";
+      if (failed.length) msg += " Failed: " + failed.map(function (f) { return f.name + " (" + f.error + ")"; }).join("; ") + ".";
+      uploadStage(failed.length && !done.length ? "ready" : "done", msg);
+      return;
+    }
+    var p = files[i];
+    var name = basename(p);
+    var mime = mimeForMaster(p);
+    var size = 0;
+    window.fame.fileSize(p).then(function (sz) {
+      size = sz;
+      if (!size) throw new Error("empty or unreadable");
+      uploadStage("uploading", "Sending " + name + " (" + (i + 1) + " of " + files.length + ", " + (size / 1048576).toFixed(1) + " MB) to Raw Masters - keep the app open…");
+      return apiFetch("/raw-master-session", { method: "POST", body: { slug: slug, filename: name, size: size, mimeType: mime } });
+    }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "could not prepare the upload"); return j; }); })
+      .then(function (session) {
+        return window.fame.uploadFile({ filePath: p, sessionUri: session.sessionUri, mimeType: mime });
+      })
+      .then(function () { done.push(name); sendOne(i + 1); })
+      // One bad file must not lose the ones that worked: note it and carry on.
+      .catch(function (e) { failed.push({ name: name, error: e.message }); sendOne(i + 1); });
+  }
+  sendOne(0);
 }
 
 window.fame.onUploadProgress(function (d) {
