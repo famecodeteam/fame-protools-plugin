@@ -2,7 +2,7 @@
 <body style="font-family:Figtree,Arial,sans-serif;color:#292a25;font-size:11pt;">
 <h1>Fame Pro Tools Plugin Working Procedure</h1>
 <p><i>Everything the Plugin can do, in plain English - what each button does, where its information comes from, and what it will never do without you clicking a button. It is the Pro Tools counterpart to the Fame Reaper Plugin and the Fame Premiere Plugin: same brain on the server, Pro Tools' hands on the session.</i></p>
-<p><b>Version:</b> 1.1.7 (15 September 2026). This document is updated in place - the link never changes.</p>
+<p><b>Version:</b> 1.1.9 (18 September 2026). This document is updated in place - the link never changes.</p>
 <p><b>Install:</b> <a href="https://review.fame.so/protools">review.fame.so/protools</a>. Needs Pro Tools 2025.10 or newer, any tier. <b>Cubase editors use the same app</b> - see the <a href="https://docs.google.com/document/d/1dxACMDcwi14Aym_nNdno3tdDpA5AsEYn4cIWDqhnC_s/edit">Cubase working procedure</a>.</p>
 
 <h2>How the three systems fit together</h2>
@@ -47,6 +47,7 @@
 </ul>
 
 <h2>Deliver</h2>
+<p><b>Where it goes</b> is the dropdown at the top of the card. The audio asset is the client version - it lands internal-only for your PM and QA runs on it. <b>Raw master - for the video editor</b> is the other one: it puts the file straight into this episode's Raw Masters folder on Drive for the VE to cut against, creates no version and sends nothing for review. The client loudness checks are skipped for a raw master, since it is source rather than a deliverable, but you still see its length, loudness and true peak.</p>
 <ol>
 <li><b>Bounce + check</b> does an offline bounce of the main mix to MP3 320 into a "Fame renders" folder beside your session, measures integrated loudness and true peak on your machine, and runs preflight (Fame's -14 LUFS target, true peak, duration, stereo). Already bounced with your own chain? <b>Choose a bounced file</b> gives it the same checks.</li>
 <li><b>Check comments</b> lists open comments that still look unaddressed: cuttable ones are checked mechanically against your session; judgement ones are counted for a last look. Advisory only.</li>

@@ -1654,6 +1654,10 @@ function renderBrief() {
 
 // ---------- Deliver: bounce, measure, preflight, upload ----------
 
+// A destination, not an asset: the bounce goes into the episode's Raw
+// Masters folder on Drive for the VE, and no client version is created.
+var RAW_MASTER = "__raw_master__";
+
 var upload = { stage: "idle", assetId: null, file: null, measured: null, preflight: null, worst: null, msg: "", version: null };
 var precheck = null;
 var music = null;
@@ -1681,7 +1685,7 @@ function renderDeliverCard() {
     host.appendChild(none);
     return;
   }
-  if (!upload.assetId || !assets.some(function (a) { return a.id === upload.assetId; })) upload.assetId = assets[0].id;
+  if (!upload.assetId || (upload.assetId !== RAW_MASTER && !assets.some(function (a) { return a.id === upload.assetId; }))) upload.assetId = assets[0].id;
   var sel = document.createElement("select");
   assets.forEach(function (a) {
     var o = document.createElement("option");
@@ -1690,7 +1694,16 @@ function renderDeliverCard() {
     if (a.id === upload.assetId) o.selected = true;
     sel.appendChild(o);
   });
-  sel.onchange = function () { upload.assetId = sel.value; };
+  // The AE's FIRST hand-off is not a client deliverable at all: it is the
+  // raw master the video editor cuts against, and today it goes to Drive by
+  // hand and a link gets pasted on the card. Asked for by Andy - "can we
+  // have the option for a Raw Masters upload tag as well".
+  var rm = document.createElement("option");
+  rm.value = RAW_MASTER;
+  rm.textContent = "Raw master - for the video editor (not a client version)";
+  if (upload.assetId === RAW_MASTER) rm.selected = true;
+  sel.appendChild(rm);
+  sel.onchange = function () { upload.assetId = sel.value; renderDeliverCard(); };
   host.appendChild(sel);
 
   var busy = upload.stage === "rendering" || upload.stage === "measuring" || upload.stage === "preflight" || upload.stage === "uploading";
@@ -1779,7 +1792,9 @@ function renderDeliverCard() {
       var go = document.createElement("button");
       go.className = "btn-primary";
       go.style.marginTop = "8px";
-      go.textContent = upload.worst === "fail" ? "Upload anyway" : "Upload as v" + nextVersionLabel(upload.assetId);
+      go.textContent = upload.assetId === RAW_MASTER
+        ? "Send to Raw Masters"
+        : (upload.worst === "fail" ? "Upload anyway" : "Upload as v" + nextVersionLabel(upload.assetId));
       go.onclick = doUpload;
       host.appendChild(go);
     }
@@ -1846,6 +1861,16 @@ function prepareUpload(filePath) {
     return hands.measure(p);
   }).then(function (m) {
     upload.measured = m;
+    // Preflight judges a CLIENT deliverable - the loudness target, whether
+    // the cut looks truncated. None of that applies to a raw master the
+    // video editor is about to cut against, and running it would hand the
+    // editor warnings about the wrong thing. The measurement still shows.
+    if (upload.assetId === RAW_MASTER) {
+      upload.preflight = [];
+      upload.worst = null;
+      uploadStage("ready", "Measured. Client checks are skipped for a raw master - it is source for the video editor, not a version for review.");
+      return null;
+    }
     uploadStage("preflight", "Running preflight…");
     track("preflight");
     return apiFetch("/preflight", { method: "POST", body: {
@@ -1853,6 +1878,7 @@ function prepareUpload(filePath) {
       durationSec: m.durationSec, lufs: m.lufs, truePeakDb: m.truePeakDb, channels: m.channels,
     } }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Preflight failed (" + r.status + ")"); return j; }); });
   }).then(function (j) {
+    if (!j) return; // raw master: measured, no client verdict to show
     var rows = (j.report && (j.report.results || j.report.checks)) || [];
     upload.preflight = rows;
     var worst = "pass";
@@ -1876,6 +1902,7 @@ function prepareUpload(filePath) {
 
 function doUpload() {
   if (!upload.file) return;
+  if (upload.assetId === RAW_MASTER) return doRawMasterUpload();
   var slug = currentData.slug, assetId = upload.assetId;
   uploadStage("uploading", "Preparing the upload…");
   track("upload");
@@ -1914,6 +1941,34 @@ window.fame.onNote(function (text) {
   if (upload.stage === "rendering") uploadStage("rendering", text);
   else setStatus(text, "", true);
 });
+
+// The raw master goes to the episode's Raw Masters folder on Drive - the
+// same door "Analyze what's on my timeline" uses - and creates no client
+// version, because nobody is reviewing it. Named with the speaker-free
+// "<slug>-raw-master" prefix so the VE can see what it is at a glance.
+function doRawMasterUpload() {
+  var slug = currentData.slug;
+  var mime = /\.wav$/i.test(upload.file) ? "audio/wav" : "audio/mpeg";
+  var name = basename(upload.file);
+  uploadStage("uploading", "Preparing the upload…");
+  track("upload");
+  var size = 0;
+  window.fame.fileSize(upload.file).then(function (sz) {
+    size = sz;
+    if (!size) throw new Error("The file is empty or unreadable.");
+    return apiFetch("/raw-master-session", { method: "POST", body: { slug: slug, filename: name, size: size, mimeType: mime } });
+  }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Could not prepare the upload"); return j; }); })
+    .then(function (session) {
+      uploadStage("uploading", "Sending " + name + " (" + (size / 1048576).toFixed(1) + " MB) to this episode's Raw Masters folder - keep the app open…");
+      return window.fame.uploadFile({ filePath: upload.file, sessionUri: session.sessionUri, mimeType: mime });
+    })
+    .then(function () {
+      logChange("Sent " + name + " to the episode's Raw Masters folder for the video editor");
+      playDone();
+      uploadStage("done", name + " is in this episode's Raw Masters folder on Drive. The video editor can pick it up - it is not a client version, so nothing has gone for review.");
+    })
+    .catch(function (e) { uploadStage("ready", "Upload failed: " + e.message); });
+}
 
 window.fame.onUploadProgress(function (d) {
   var bar = document.getElementById("upload-progress");
