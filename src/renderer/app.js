@@ -1659,6 +1659,61 @@ function renderBrief() {
 var RAW_MASTER = "__raw_master__";
 
 var upload = { stage: "idle", assetId: null, file: null, measured: null, preflight: null, worst: null, msg: "", version: null };
+
+// The client's QC checklist - the same boxes the review tool's upload page
+// makes you tick. Andy: uploading from the plugin "bypasses the checklist in
+// the portal". Fetched per episode + asset, ticks kept only in memory, and
+// the ticked list travels with the upload so the PM's Trello note shows it.
+var qc = { key: "", items: [], ticked: [], loading: false, failed: false };
+function qcKey() { return (currentData ? currentData.slug : "") + "|" + upload.assetId; }
+function loadChecklist() {
+  var key = qcKey();
+  if (qc.key === key || !currentData || upload.assetId === RAW_MASTER) return;
+  qc = { key: key, items: [], ticked: [], loading: true, failed: false };
+  apiFetch("/checklist?slug=" + encodeURIComponent(currentData.slug) + "&assetId=" + encodeURIComponent(upload.assetId))
+    .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "failed"); return j; }); })
+    .then(function (j) {
+      if (qc.key !== key) return;
+      qc.items = Array.isArray(j.items) ? j.items : [];
+      qc.ticked = qc.items.map(function () { return false; });
+    })
+    .catch(function () { if (qc.key === key) qc.failed = true; })
+    .then(function () { if (qc.key === key) { qc.loading = false; renderDeliverCard(); } });
+}
+function qcDone() { return upload.assetId === RAW_MASTER || qc.ticked.every(Boolean); }
+function renderChecklist(host) {
+  if (upload.assetId === RAW_MASTER) return;
+  loadChecklist();
+  var box = document.createElement("div");
+  box.className = "qc-box";
+  var h = document.createElement("div");
+  h.className = "qc-head";
+  h.textContent = "QC checklist";
+  box.appendChild(h);
+  if (qc.loading) {
+    box.appendChild(qcSub("Loading this client's checklist…"));
+  } else if (qc.failed) {
+    box.appendChild(qcSub("Couldn't load the checklist - check it on the review tool's upload page before you send."));
+  } else if (!qc.items.length) {
+    box.appendChild(qcSub("No QC checklist is set for this client's audio."));
+  } else {
+    qc.items.forEach(function (item, i) {
+      var lab = document.createElement("label");
+      lab.className = "qc-item";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!qc.ticked[i];
+      cb.disabled = upload.stage === "uploading";
+      cb.onchange = function () { qc.ticked[i] = cb.checked; renderDeliverCard(); };
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(item));
+      box.appendChild(lab);
+    });
+    if (!qcDone()) box.appendChild(qcSub("Tick every check to upload."));
+  }
+  host.appendChild(box);
+}
+function qcSub(t) { var d = document.createElement("div"); d.className = "cl-sub"; d.textContent = t; return d; }
 var precheck = null;
 var music = null;
 
@@ -1821,15 +1876,17 @@ function renderDeliverCard() {
       host.appendChild(d);
     });
   }
+  if (upload.stage === "ready" || upload.stage === "idle" || upload.stage === "done") renderChecklist(host);
   if (upload.stage === "ready" && ((upload.file && upload.measured) || batch)) {
     var go = document.createElement("button");
+    go.disabled = !qcDone();
     go.className = "btn-primary";
     go.style.marginTop = "8px";
     var n = (upload.files && upload.files.length) || 1;
     go.textContent = upload.assetId === RAW_MASTER
       ? (n > 1 ? "Send " + n + " files to Raw Masters" : "Send to Raw Masters")
       : (upload.worst === "fail" ? "Upload anyway" : "Upload as v" + nextVersionLabel(upload.assetId));
-    go.onclick = doUpload;
+    go.onclick = function () { if (qcDone()) doUpload(); };
     host.appendChild(go);
   }
   if (music) {
@@ -1956,13 +2013,19 @@ function doUpload() {
       return apiFetch("/upload", { method: "POST", body: {
         slug: slug, assetId: assetId, step: "complete", driveFileId: up.driveFileId, version: up.session.version,
         filename: basename(upload.file), sizeBytes: size, mimeType: mime, changeLog: readChangeLog(),
+        // Tag the PM on the Trello card as soon as this lands, with the
+        // checks ticked above - what AEs were writing on the card by hand.
+        notifyPm: true, checklist: qc.items.filter(function (_, i) { return qc.ticked[i]; }),
+        editorName: ((readSession() || {}).email || "").split("@")[0] || null,
+        source: FILE_BASED ? "Cubase plugin" : "Pro Tools plugin",
       } }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "complete failed"); return up.session.version; }); });
     })
     .then(function (v) {
       clearChangeLog();
       upload.version = v;
       playDone();
-      uploadStage("done", "v" + v + " uploaded with a what-changed note for the PM - it lands internal-only and QA is already running.");
+      qc.key = "";
+      uploadStage("done", "v" + v + " uploaded - the PM is tagged on the Trello card, with a what-changed note on the version. It lands internal-only and QA is already running.");
       loadBrief();
     })
     .catch(function (e) { uploadStage("ready", "Upload failed: " + e.message); });

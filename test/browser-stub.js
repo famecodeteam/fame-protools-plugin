@@ -16,10 +16,21 @@
         window.__fameCalls.push({ name: "raw-master-session", args: [JSON.parse(opts.body)] });
         return Promise.resolve(new Response(JSON.stringify({ sessionUri: "https://stub.invalid/upload" }), { status: 200, headers: { "content-type": "application/json" } }));
       }
+      if (url.indexOf("/api/panel/upload") >= 0) {
+        var ub = JSON.parse(opts.body);
+        window.__fameCalls.push({ name: "upload-" + ub.step, args: [ub] });
+        var out = ub.step === "session" ? { sessionUri: "https://stub.invalid/upload", version: 9 } : { ok: true };
+        return Promise.resolve(new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } }));
+      }
       if (url.indexOf("/api/panel/cleanup") >= 0) {
         window.__fameCalls.push({ name: "cleanup-post", args: [url] });
         return Promise.resolve(new Response(JSON.stringify({ state: window.__fameLastState || { status: "transcribing", files: [] } }), { status: 200, headers: { "content-type": "application/json" } }));
       }
+    }
+    // Until /api/panel/checklist is live, a browser run can set
+    // window.__fameChecklist to see the boxes.
+    if (typeof url === "string" && url.indexOf("/api/panel/checklist") >= 0 && window.__fameChecklist) {
+      return Promise.resolve(new Response(JSON.stringify({ items: window.__fameChecklist }), { status: 200, headers: { "content-type": "application/json" } }));
     }
     if (typeof url === "string" && url.indexOf("https://review.fame.so/") === 0 && ADMIN) {
       opts = opts || {};

@@ -330,3 +330,8 @@ pre.diag {
 }
 .hook-text.full { -webkit-line-clamp: unset; }
 .hook-meta { font-size: 10px; color: var(--faint); margin-top: 2px; }
+.qc-box { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--line-soft); }
+.qc-head { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.qc-item { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.4; padding: 3px 0; cursor: pointer; }
+.qc-item input { accent-color: var(--pink); margin-top: 3px; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
