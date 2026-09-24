@@ -2431,7 +2431,16 @@ function showUpdateBar(version, ready) {
   var b = document.createElement("button");
   if (ready) {
     b.textContent = "Restart to update";
-    b.onclick = function () { window.fame.installUpdate(); };
+    b.onclick = function () {
+      b.disabled = true;
+      b.textContent = "Restarting…";
+      Promise.resolve(window.fame.installUpdate()).then(function () {
+        // Still here, so the restart did not happen - hand over the download.
+        b.disabled = false;
+        b.textContent = "Download it at " + INSTALL_URL.replace("https://", "");
+        b.onclick = function () { window.fame.openExternal(INSTALL_URL); };
+      });
+    };
   } else {
     b.textContent = "Get it at " + INSTALL_URL.replace("https://", "");
     b.onclick = function () { window.fame.openExternal(INSTALL_URL); };

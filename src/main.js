@@ -225,12 +225,23 @@ ipcMain.handle("app:uninstall", async () => {
 function setupUpdates() {
   let autoUpdater;
   try { ({ autoUpdater } = require("electron-updater")); } catch (e) { return; }
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // macOS will not install an update into an UNSIGNED app (Squirrel.Mac
+  // checks the code signature and fails silently), so there "Restart to
+  // update" did nothing (Karthik, 24 Sep 2026). On a Mac we only detect the
+  // update and the banner sends the editor to the download page instead.
+  const canSelfInstall = process.platform !== "darwin";
+  autoUpdater.autoDownload = canSelfInstall;
+  autoUpdater.autoInstallOnAppQuit = canSelfInstall;
   autoUpdater.on("update-available", (info) => { if (win) win.webContents.send("update:available", { version: info.version }); });
   autoUpdater.on("update-downloaded", (info) => { if (win) win.webContents.send("update:ready", { version: info.version }); });
   autoUpdater.on("error", () => { /* offline or unsigned dev build */ });
-  ipcMain.handle("app:installUpdate", () => { try { autoUpdater.quitAndInstall(); } catch (e) { /* nothing to install */ } });
+  // If the app is still running a few seconds after asking it to restart,
+  // the install failed - tell the renderer so it can offer the download.
+  ipcMain.handle("app:installUpdate", async () => {
+    try { autoUpdater.quitAndInstall(); } catch (e) { return { ok: false }; }
+    await new Promise((r) => setTimeout(r, 5000));
+    return { ok: false };
+  });
   if (app.isPackaged) {
     setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 4000);
     setInterval(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 6 * 3600 * 1000);
