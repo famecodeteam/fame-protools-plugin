@@ -11,6 +11,14 @@
     // re-analysis (it costs a transcription and overwrites the cached one)
     // or open an upload session on a client's Drive folder.
     var method = ((opts && opts.method) || "GET").toUpperCase();
+    // Fame Enhance: stubbed end to end so a browser run never spends GPU.
+    if (typeof url === "string" && url.indexOf("/api/panel/enhance") >= 0) {
+      var eb = opts && opts.body ? JSON.parse(opts.body) : {};
+      window.__fameCalls.push({ name: "enhance-" + (eb.op || "poll"), args: [eb] });
+      var ej = eb.op === "session" ? { sessionUri: "https://stub.invalid/enhance" }
+        : { job: { id: "job-stub", status: eb.op === "start" ? "processing" : "done" } };
+      return Promise.resolve(new Response(JSON.stringify(ej), { status: 200, headers: { "content-type": "application/json" } }));
+    }
     if (typeof url === "string" && method === "POST") {
       if (url.indexOf("/api/panel/raw-master-session") >= 0) {
         window.__fameCalls.push({ name: "raw-master-session", args: [JSON.parse(opts.body)] });
@@ -95,6 +103,7 @@
     fileSize: function (p) { return Promise.resolve(/guest2/.test(p) ? 0 : 12345678); },
     openExternal: function () { return Promise.resolve(); },
     showInFolder: function () { return Promise.resolve(); },
+    downloadFile: function (a) { calls.push({ name: "downloadFile", args: [a] }); return Promise.resolve(a.outPath); },
     uploadFile: function (a) { calls.push({ name: "uploadFile", args: [a] }); return Promise.resolve({ id: "stub-drive-file" }); },
     installUpdate: function () { return Promise.resolve(); },
     latestVersion: function () { return Promise.resolve({ version: "1.0.0", notes: "" }); },

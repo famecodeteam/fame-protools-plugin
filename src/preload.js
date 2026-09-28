@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("fame", {
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
   showInFolder: (p) => ipcRenderer.invoke("app:showInFolder", p),
   uploadFile: (args) => unwrap(ipcRenderer.invoke("app:uploadFile", args)),
+  downloadFile: (args) => unwrap(ipcRenderer.invoke("app:downloadFile", args)),
   installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
   latestVersion: (url) => ipcRenderer.invoke("app:latestVersion", url),
   uninstallPlan: () => ipcRenderer.invoke("app:uninstallPlan"),

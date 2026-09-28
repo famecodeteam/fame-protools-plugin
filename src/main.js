@@ -149,6 +149,21 @@ ipcMain.handle("app:uploadFile", (ev, { filePath, sessionUri, mimeType }) => new
   stream.pipe(req);
 }));
 
+// Fame Enhance: stream a finished enhanced WAV from review.fame.so to disk
+// (a long episode is hundreds of MB - never through the renderer). The
+// output path is always derived from a file the editor picked.
+ipcMain.handle("app:downloadFile", (ev, { url, token, outPath }) => new Promise((resolve) => {
+  if (!/^https:\/\/review\.fame\.so\//.test(String(url))) return resolve({ ok: false, error: "Refusing to download from " + url });
+  try { fs.mkdirSync(path.dirname(outPath), { recursive: true }); } catch (e) { return resolve({ ok: false, error: "Could not make " + path.dirname(outPath) }); }
+  https.get(url, { headers: { authorization: "Bearer " + token } }, (res) => {
+    if (res.statusCode !== 200) { res.resume(); return resolve({ ok: false, error: "Download failed (" + res.statusCode + ")" }); }
+    const out = fs.createWriteStream(outPath);
+    res.pipe(out);
+    out.on("finish", () => resolve({ ok: true, value: outPath }));
+    out.on("error", (e) => resolve({ ok: false, error: "Could not save: " + e.message }));
+  }).on("error", (e) => resolve({ ok: false, error: "Download failed: " + e.message }));
+}));
+
 // ---------- uninstall ----------
 //
 // The second Pro Tools AE would not install it without one: "Not having a

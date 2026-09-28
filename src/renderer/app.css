@@ -335,3 +335,14 @@ pre.diag {
 .qc-item { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.4; padding: 3px 0; cursor: pointer; }
 .qc-item input { accent-color: var(--pink); margin-top: 3px; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Fame Enhance */
+#enhance { background: var(--ink-raised); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+.enh-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; font-weight: 500; }
+.enh-row input[type=range] { flex: 1; accent-color: var(--pink); }
+.enh-row input[type=checkbox] { accent-color: var(--pink); }
+.enh-job { margin-top: 8px; font-size: 12px; }
+.enh-name { font-weight: 600; }
+.enh-msg { color: var(--muted); }
+.enh-msg.good { color: var(--green); }
+.enh-msg.bad { color: #ff8aa9; }
