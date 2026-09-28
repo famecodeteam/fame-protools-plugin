@@ -55,6 +55,20 @@
 <li><b>Upload as vN</b> sends the file straight from your machine to Drive and records it as the audio asset's next version, internal-only, with a what-changed note for the PM listing every action the Plugin took. QA runs on it automatically.</li>
 </ol>
 
+<h2>Fame Enhance</h2>
+<p>Fame's own version of Adobe Enhance. It works with or without an episode loaded, in Pro Tools and Cubase.</p>
+<ol>
+<li>Press <b>Enhance</b> at the bottom of the app.</li>
+<li>Pick a mode.</li>
+<li>Press <b>Choose recordings...</b> and pick the files - or <b>Use the ones on my timeline</b> to take every speech recording in the session (music and beds are skipped).</li>
+</ol>
+<p>Each recording is cleaned on Fame's GPU. With "Add each result as a new track" ticked, Pro Tools gets a new track "<i>(name)</i> (Enhanced)" at the session start; in Cubase a track archive is written to your exchange folder to import. The enhanced file keeps the recording's exact length and timing, so it lines up perfectly with a recording that starts at the session start - the way <b>Build audio assembly</b> lays them out. <b>Best done before you cut</b>: enhance the raw recordings first, then edit.</p>
+<p><b>Which mode.</b> <b>Clean</b> removes background noise and room echo - use it by default. <b>Light</b> removes noise only and keeps the room sound; it is the fastest. <b>Studio</b> cleans, then rebuilds a fuller "broadcast mic" sound - it is the slowest and can change how a voice sounds, so listen closely before you keep it.</p>
+<p><b>Strength</b> (default 90%) blends some of the original back in - lower it if the result sounds processed. <b>Level to podcast loudness</b> brings the result to -16 LUFS.</p>
+<p><b>How long it takes.</b> Roughly a minute per minute of audio, less in Light mode. Keep working while it runs - progress shows in the box.</p>
+<p><b>Where the files go.</b> Each result is a 48 kHz 24-bit WAV in a <b>Fame Enhanced</b> folder next to the original recording. Your original file is never changed. Every result is also listed at review.fame.so/enhance, where you can compare Original and Enhanced side by side and download it again.</p>
+<p><b>Only use it on speech.</b> It is a voice model - it will damage music, beds and sound effects.</p>
+
 <h2>What it will never do without you</h2>
 <ul>
 <li>It never cuts, silences, levels, bounces or uploads until you press the button, and every action shows an in-app confirmation first.</li>
