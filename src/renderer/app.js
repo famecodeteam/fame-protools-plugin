@@ -1765,6 +1765,7 @@ function renderDeliverCard() {
     // place.
     upload.files = null;
     upload.fileList = null;
+    upload.batch = null;
     upload.file = null;
     upload.measured = null;
     upload.preflight = null;
@@ -1810,7 +1811,12 @@ function renderDeliverCard() {
       });
       return;
     }
-    window.fame.pickFile({ title: "Choose the bounced audio master" }).then(function (p) { if (p) prepareUpload(p); });
+    // Several at once for the times a team wants more than one version to
+    // share with the client (Andy, 2 Oct 2026). Each becomes its own version.
+    window.fame.pickFile({ title: "Choose the bounced audio master(s)", multi: true }).then(function (paths) {
+      if (!paths || !paths.length) return;
+      if (paths.length === 1) prepareUpload(paths[0]); else prepareMasterBatch(paths);
+    });
   };
   row.appendChild(choose);
   var pc = document.createElement("button");
@@ -1876,8 +1882,20 @@ function renderDeliverCard() {
       host.appendChild(d);
     });
   }
+  if (upload.batch && staged) renderMasterBatch(host);
   if (upload.stage === "ready" || upload.stage === "idle" || upload.stage === "done") renderChecklist(host);
-  if (upload.stage === "ready" && ((upload.file && upload.measured) || batch)) {
+  if (upload.stage === "ready" && upload.batch) {
+    var gb = document.createElement("button");
+    gb.disabled = !qcDone();
+    gb.className = "btn-primary";
+    gb.style.marginTop = "8px";
+    var first = nextVersionLabel(upload.assetId);
+    var anyFail = upload.batch.some(function (b) { return b.worst === "fail"; });
+    gb.textContent = (anyFail ? "Upload anyway as " : "Upload as ") + (typeof first === "number"
+      ? "v" + first + "-v" + (first + upload.batch.length - 1) : upload.batch.length + " versions");
+    gb.onclick = function () { if (qcDone()) doMasterBatchUpload(); };
+    host.appendChild(gb);
+  } else if (upload.stage === "ready" && ((upload.file && upload.measured) || batch)) {
     var go = document.createElement("button");
     go.disabled = !qcDone();
     go.className = "btn-primary";
@@ -1937,6 +1955,7 @@ function uploadStage(stage, msg) {
 
 function prepareUpload(filePath) {
   if (!currentData || !upload.assetId) return;
+  upload.batch = null;
   var start = filePath ? Promise.resolve(filePath) : (function () {
     uploadStage("rendering", FILE_BASED ? "Waiting for your mixdown in the exchange folder…" : "Bouncing the mix to MP3 320… this runs offline, faster than real time.");
     track("render");
@@ -2031,6 +2050,135 @@ function doUpload() {
     .catch(function (e) { uploadStage("ready", "Upload failed: " + e.message); });
 }
 
+// ---------- several client masters at once ----------
+// Each file gets the same measurement and preflight a single bounce does,
+// then they go up in the order picked as consecutive versions of the chosen
+// asset. The PM gets ONE Trello note at the end naming every version.
+function preflightFor(filePath, m) {
+  return apiFetch("/preflight", { method: "POST", body: {
+    slug: currentData.slug, assetId: upload.assetId, filename: basename(filePath),
+    durationSec: m.durationSec, lufs: m.lufs, truePeakDb: m.truePeakDb, channels: m.channels,
+  } }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Preflight failed"); return j; }); })
+    .then(function (j) {
+      var rows = (j.report && (j.report.results || j.report.checks)) || [];
+      var worst = "pass";
+      rows.forEach(function (r) {
+        var v = r.verdict || r.status;
+        if (v === "fail") worst = "fail"; else if (v === "warn" && worst !== "fail") worst = "warn";
+      });
+      return { rows: rows, worst: worst };
+    })
+    .catch(function () { return { rows: [], worst: null }; });
+}
+
+function prepareMasterBatch(paths) {
+  upload.files = null;
+  upload.fileList = null;
+  upload.file = null;
+  upload.measured = null;
+  upload.preflight = null;
+  upload.worst = null;
+  upload.batch = paths.map(function (p) { return { path: p, measured: null, preflight: [], worst: null, error: null }; });
+  var i = 0;
+  function next() {
+    if (i >= upload.batch.length) {
+      var bad = upload.batch.filter(function (b) { return b.worst === "fail" || b.error; }).length;
+      uploadStage("ready", upload.batch.length + " files checked" + (bad ? " - " + bad + " with problems, see below." : "."));
+      return;
+    }
+    var b = upload.batch[i];
+    uploadStage("measuring", "Checking " + basename(b.path) + " (" + (i + 1) + " of " + upload.batch.length + ")…");
+    hands.measure(b.path).then(function (m) {
+      b.measured = m;
+      return preflightFor(b.path, m);
+    }).then(function (pf) { b.preflight = pf.rows; b.worst = pf.worst; })
+      .catch(function (e) { b.error = e.message; })
+      .then(function () { i++; next(); });
+  }
+  next();
+}
+
+function renderMasterBatch(host) {
+  var first = nextVersionLabel(upload.assetId);
+  upload.batch.forEach(function (b, idx) {
+    var head = document.createElement("div");
+    head.className = "d-meas";
+    var me = b.measured;
+    head.textContent = (typeof first === "number" ? "v" + (first + idx) + ": " : "") + basename(b.path) +
+      (b.error ? " - could not read (" + b.error + ")" : me ? " - " + fmtTime(me.durationSec || 0) + ", " +
+        (me.lufs != null ? me.lufs.toFixed(1) + " LUFS" : "loudness n/a") + ", " +
+        (me.truePeakDb != null ? me.truePeakDb.toFixed(1) + " dBTP" : "true peak n/a") : "");
+    if (b.version) head.textContent += " - uploaded";
+    host.appendChild(head);
+    (b.preflight || []).forEach(function (r) {
+      var v = r.verdict || r.status || "pass";
+      if (v === "skip" || v === "pass") return; // only problems, or the list gets long
+      var d = document.createElement("div");
+      d.className = "pf-row";
+      var icon = document.createElement("span");
+      icon.className = "pf-icon";
+      icon.textContent = v === "fail" ? "❌" : "⚠️";
+      d.appendChild(icon);
+      d.appendChild(document.createTextNode(r.message || r.label || ""));
+      host.appendChild(d);
+    });
+  });
+}
+
+function uploadOneVersion(slug, assetId, filePath, extra) {
+  var mime = mimeForMaster(filePath);
+  var size = 0;
+  return window.fame.fileSize(filePath).then(function (sz) {
+    size = sz;
+    if (!size) throw new Error("empty or unreadable");
+    return apiFetch("/upload", { method: "POST", body: { slug: slug, assetId: assetId, step: "session", mimeType: mime, size: size } });
+  }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "session failed"); return j; }); })
+    .then(function (session) {
+      return window.fame.uploadFile({ filePath: filePath, sessionUri: session.sessionUri, mimeType: mime })
+        .then(function (meta) { return { session: session, driveFileId: meta.id }; });
+    })
+    .then(function (up) {
+      return apiFetch("/upload", { method: "POST", body: Object.assign({
+        slug: slug, assetId: assetId, step: "complete", driveFileId: up.driveFileId, version: up.session.version,
+        filename: basename(filePath), sizeBytes: size, mimeType: mime,
+      }, extra || {}) }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "complete failed"); return up.session.version; }); });
+    });
+}
+
+function doMasterBatchUpload() {
+  var slug = currentData.slug, assetId = upload.assetId;
+  var items = upload.batch.filter(function (b) { return !b.error && !b.version; });
+  track("upload");
+  var done = [], failed = [];
+  function sendOne(i) {
+    if (i >= items.length) {
+      if (done.length) { clearChangeLog(); playDone(); qc.key = ""; loadBrief(); }
+      var msg = done.length
+        ? done.map(function (d) { return "v" + d.version; }).join(", ") + " uploaded - the PM is tagged once on the Trello card for all of them. They land internal-only and QA is already running."
+        : "Nothing was uploaded.";
+      if (failed.length) msg += " Failed: " + failed.map(function (f) { return f.name + " (" + f.error + ")"; }).join("; ") + ".";
+      uploadStage(done.length ? "done" : "ready", msg);
+      return;
+    }
+    var b = items[i];
+    var last = i === items.length - 1;
+    uploadStage("uploading", "Uploading " + basename(b.path) + " (" + (i + 1) + " of " + items.length + ") straight to Drive - keep the app open…");
+    // The what-changed note and the PM's Trello note ride on the LAST
+    // version only, so the PM gets one note naming every version.
+    var extra = last ? {
+      changeLog: readChangeLog(),
+      notifyPm: true, checklist: qc.items.filter(function (_, k) { return qc.ticked[k]; }),
+      alsoVersions: done.map(function (d) { return d.version; }),
+      editorName: ((readSession() || {}).email || "").split("@")[0] || null,
+      source: FILE_BASED ? "Cubase plugin" : "Pro Tools plugin",
+    } : {};
+    uploadOneVersion(slug, assetId, b.path, extra)
+      .then(function (v) { b.version = v; done.push({ version: v }); sendOne(i + 1); })
+      .catch(function (e) { failed.push({ name: basename(b.path), error: e.message }); sendOne(i + 1); });
+  }
+  sendOne(0);
+}
+
 // The adapter's own progress lines (Cubase: "export the mixdown into…",
 // "cutting file…") land in the Deliver card while it waits.
 window.fame.onNote(function (text) {
@@ -2044,6 +2192,7 @@ window.fame.onNote(function (text) {
 // what anyone checks a stem for, so a batch is listed rather than measured.
 // A single file still gets its measurement, which is the useful case.
 function prepareRawMasters(paths) {
+  upload.batch = null;
   if (paths.length === 1) return prepareUpload(paths[0]);
   upload.files = paths.slice();
   upload.file = paths[0];
