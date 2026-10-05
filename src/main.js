@@ -19,6 +19,14 @@ const { assertHands } = require("../hands/interface");
 
 let win = null;
 
+// Last line of defence: a stray file or network error must never put up
+// Electron's "JavaScript error in the main process" box (Andy, 5 Oct 2026).
+// Log it and tell the panel instead.
+process.on("uncaughtException", (e) => {
+  console.error("[main] uncaught:", e);
+  try { if (win) win.webContents.send("hands:note", "Something went wrong: " + ((e && e.message) || e)); } catch (e2) {}
+});
+
 // Which DAW: chosen at sign-in ("Which DAW?") and remembered on disk with
 // the Cubase setup (exchange folder, MIDI port). One adapter at a time.
 const SETTINGS_FILE = () => path.join(app.getPath("userData"), "fame-settings.json");
@@ -121,12 +129,23 @@ ipcMain.handle("app:latestVersion", (ev, url) => new Promise((resolve) => {
   } catch (e) { resolve(null); }
 }));
 
+// macOS privacy: an app without "Files and Folders" access gets EPERM on
+// Documents/Desktop/Downloads. Say how to fix it, in plain words.
+function friendlyFsError(e, filePath) {
+  if (e && (e.code === "EPERM" || e.code === "EACCES") && process.platform === "darwin") {
+    return "macOS is blocking this app from reading " + path.basename(filePath) + ". Open System Settings > Privacy & Security > Files and Folders, find Fame Pro Tools Plugin and turn on the folder it's in (e.g. Documents), then try again.";
+  }
+  return "Couldn't read " + path.basename(filePath) + ": " + ((e && e.message) || e);
+}
+
 // Stream a local file straight to Drive's resumable session URI - the
 // same path the /ve page and the Reaper plugin use; no Fame server in the
 // byte path. Resolves Drive's file metadata.
 ipcMain.handle("app:uploadFile", (ev, { filePath, sessionUri, mimeType }) => new Promise((resolve) => {
   let size;
   try { size = fs.statSync(filePath).size; } catch (e) { return resolve({ ok: false, error: "The file is missing: " + filePath }); }
+  // Prove we can open it before starting an upload session's PUT.
+  try { fs.closeSync(fs.openSync(filePath, "r")); } catch (e) { return resolve({ ok: false, error: friendlyFsError(e, filePath) }); }
   const u = new URL(sessionUri);
   const req = https.request({
     method: "PUT", hostname: u.hostname, path: u.pathname + u.search,
@@ -142,6 +161,12 @@ ipcMain.handle("app:uploadFile", (ev, { filePath, sessionUri, mimeType }) => new
   req.on("error", (e) => resolve({ ok: false, error: "Drive upload failed: " + e.message }));
   let sent = 0;
   const stream = fs.createReadStream(filePath);
+  // An unreadable file must come back as a message, never crash the app
+  // (Andy, 5 Oct 2026: macOS refused his Documents folder -> EPERM dialog).
+  stream.on("error", (e) => {
+    req.destroy();
+    resolve({ ok: false, error: friendlyFsError(e, filePath) });
+  });
   stream.on("data", (chunk) => {
     sent += chunk.length;
     if (win) win.webContents.send("upload:progress", { sent, size });

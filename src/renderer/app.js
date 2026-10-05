@@ -2666,7 +2666,11 @@ var ENHANCE_MODES = [
   { id: "studio", label: "Studio", help: "Clean, then rebuilds a fuller 'broadcast mic' sound. Slowest - listen closely." },
 ];
 var ENHANCE_NOT_SPEECH = /music|\bbed\b|jingle|sting|intro|outro|theme|sfx/i;
-var ENH = { mode: "clean", strength: 90, level: true, addTracks: true, jobs: [], pollMs: 6000 };
+var ENH = { mode: "clean", strength: 90, level: true, addTracks: true, preview: false, jobs: [], pollMs: 6000 };
+var ENHANCE_PREVIEW_SEC = 60;
+// Recordings only - the session file (.ptx), fades and render folders also
+// show up as "paths" on the timeline (Andy's .ptx error, 5 Oct 2026).
+var ENHANCE_AUDIO_EXT = /\.(wav|aif|aiff|mp3|m4a|flac|mp4|mov)$/i;
 
 function enhanceMime(name) {
   var ext = String(name).split(".").pop().toLowerCase();
@@ -2677,11 +2681,19 @@ function enhanceJson(r) {
   return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || ("HTTP " + r.status)); return j; });
 }
 
-function enhanceOutPath(src, mode) {
+// Every run gets its own file - same recording + mode used to overwrite the
+// last result (Andy, 5 Oct 2026). Strength and preview are in the name, and
+// a number is added if that name is already taken.
+function enhanceOutPath(src, job) {
   var sep = src.indexOf("\\") >= 0 ? "\\" : "/";
   var dir = src.replace(/[\\/][^\\/]*$/, "");
   var stem = basename(src).replace(/\.[a-z0-9]{1,5}$/i, "");
-  return dir + sep + "Fame Enhanced" + sep + stem + " (Fame Enhance " + mode + ").wav";
+  var base = dir + sep + "Fame Enhanced" + sep + stem + " (Fame Enhance " + job.mode + " " + job.strength + "%" + (job.previewSec ? " preview" : "") + ")";
+  function attempt(i) {
+    var p = base + (i > 1 ? " " + i : "") + ".wav";
+    return window.fame.fileSize(p).then(function (n) { return n > 0 ? attempt(i + 1) : p; });
+  }
+  return attempt(1);
 }
 
 function enhanceSet(job, stage, msg) {
@@ -2700,7 +2712,7 @@ function runEnhanceJob(job) {
     return window.fame.uploadFile({ filePath: job.path, sessionUri: s.sessionUri, mimeType: mime });
   }).then(function (meta) {
     enhanceSet(job, "starting", "Starting the GPU…");
-    return apiFetch("/enhance", { method: "POST", body: { op: "start", inputFileId: meta.id, filename: job.name, mode: job.mode, strength: job.strength, level: job.level, source: DAW } }).then(enhanceJson);
+    return apiFetch("/enhance", { method: "POST", body: { op: "start", inputFileId: meta.id, filename: job.name, mode: job.mode, strength: job.strength, level: job.level, previewSec: job.previewSec || 0, source: DAW } }).then(enhanceJson);
   }).then(function (r) {
     if (r.job.status === "error") throw new Error(r.job.error || "the GPU service didn't take the job");
     job.id = r.job.id;
@@ -2716,10 +2728,13 @@ function pollEnhanceJob(job) {
       if (r.job.status !== "done") return pollEnhanceJob(job);
       enhanceSet(job, "downloading", "Downloading the enhanced WAV…");
       return getToken().then(function (token) {
-        return window.fame.downloadFile({ url: API + "/enhance?id=" + encodeURIComponent(job.id) + "&file=1", token: token, outPath: enhanceOutPath(job.path, job.mode) });
+        return enhanceOutPath(job.path, job).then(function (outPath) {
+          return window.fame.downloadFile({ url: API + "/enhance?id=" + encodeURIComponent(job.id) + "&file=1", token: token, outPath: outPath });
+        });
       }).then(function (p) {
         job.out = p;
         logChange("Fame Enhance (" + job.mode + ") on " + job.name);
+        if (job.previewSec) return enhanceSet(job, "done", "Preview ready - compare Original and Enhanced below. Happy? Untick Quick preview and run it on the whole file.");
         if (!(job.addTrack && can("assembly"))) return enhanceSet(job, "done", "Done - saved to " + p);
         var stem = basename(job.path).replace(/\.[a-z0-9]{1,5}$/i, "");
         return hands.buildAssembly([{ path: p, name: stem + " (Enhanced)" }]).then(function () {
@@ -2738,12 +2753,39 @@ function pollEnhanceJob(job) {
   }, ENH.pollMs);
 }
 
+// Original vs Enhanced, side by side - the "how much is it doing?" check
+// Adobe Enhance has (Andy, 5 Oct 2026). Both play straight from disk.
+function enhanceAB(job) {
+  var wrap = document.createElement("div");
+  wrap.className = "enh-ab";
+  [["Original", job.path], ["Enhanced", job.out]].forEach(function (pair) {
+    var col = document.createElement("div");
+    var lab = document.createElement("div");
+    lab.className = "eyebrow";
+    lab.textContent = pair[0];
+    var a = document.createElement("audio");
+    a.controls = true;
+    a.preload = "none";
+    a.src = "file://" + encodeURI(pair[1]).replace(/#/g, "%23").replace(/\?/g, "%3F");
+    // Play one at a time, from the same moment, so the two are easy to compare.
+    a.onplay = function () {
+      Array.prototype.forEach.call(wrap.querySelectorAll("audio"), function (o) {
+        if (o !== a && !o.paused) { a.currentTime = o.currentTime; o.pause(); }
+      });
+    };
+    col.appendChild(lab);
+    col.appendChild(a);
+    wrap.appendChild(col);
+  });
+  return wrap;
+}
+
 function startEnhance(paths) {
   var seen = {};
   paths.forEach(function (p) {
     if (!p || seen[p]) return;
     seen[p] = 1;
-    var job = { path: p, name: basename(p), mode: ENH.mode, strength: ENH.strength, level: ENH.level, addTrack: ENH.addTracks, stage: "queued", msg: "" };
+    var job = { path: p, name: basename(p), mode: ENH.mode, strength: ENH.strength, level: ENH.level, addTrack: ENH.addTracks, previewSec: ENH.preview ? ENHANCE_PREVIEW_SEC : 0, stage: "queued", msg: "" };
     ENH.jobs.push(job);
     runEnhanceJob(job);
   });
@@ -2759,7 +2801,7 @@ function chooseEnhanceFiles() {
 function enhanceTimelineFiles() {
   hands.getClips().then(function (info) {
     // Speech only: Enhance is a voice model and would wreck a music bed.
-    var paths = (info.clips || []).filter(function (c) { return c.type !== "video" && !ENHANCE_NOT_SPEECH.test(basename(c.path) + " " + (c.trackName || "")); }).map(function (c) { return c.path; }).filter(Boolean);
+    var paths = (info.clips || []).filter(function (c) { return c.type !== "video" && c.path && ENHANCE_AUDIO_EXT.test(c.path) && !ENHANCE_NOT_SPEECH.test(basename(c.path) + " " + (c.trackName || "")); }).map(function (c) { return c.path; });
     if (!paths.length) { setStatus("Couldn't read the recordings on your timeline - choose the files instead.", "error"); return; }
     startEnhance(paths);
   }).catch(function (e) { setStatus("Couldn't read the timeline: " + e.message, "error"); });
@@ -2806,6 +2848,7 @@ function renderEnhance() {
     return l;
   }
   host.appendChild(checkbox("Level to podcast loudness (-16 LUFS)", "level"));
+  host.appendChild(checkbox("Quick preview - the first " + ENHANCE_PREVIEW_SEC + " seconds only, to judge the mode and strength", "preview"));
   if (can("assembly")) host.appendChild(checkbox(FILE_BASED ? "Write a track archive to import each result" : "Add each result as a new track at the session start", "addTracks"));
 
   var row = div("row");
@@ -2818,6 +2861,7 @@ function renderEnhance() {
     var r = div("enh-job");
     r.appendChild(div("enh-name", j.name + " (" + j.mode + ")"));
     r.appendChild(div("enh-msg " + (j.stage === "error" ? "bad" : j.stage === "done" ? "good" : ""), j.msg || ""));
+    if (j.stage === "done" && j.out) r.appendChild(enhanceAB(j));
     host.appendChild(r);
   });
   host.appendChild(div("cl-sub", "Every result is also on review.fame.so/enhance to A/B and re-download."));

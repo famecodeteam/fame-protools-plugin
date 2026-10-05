@@ -1,7 +1,7 @@
 {
   "name": "fame-protools-plugin",
   "productName": "Fame Pro Tools Plugin",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Fame Pro Tools Plugin - Asset Review Tool comments and the cleanup pass beside Pro Tools (Scripting SDK) or Cubase (track archives + MMC)",
   "main": "src/main.js",
   "private": true,
@@ -58,7 +58,14 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false
+      "notarize": false,
+      "extendInfo": {
+        "NSDocumentsFolderUsageDescription": "Fame reads your session's recordings to upload and enhance them, and saves enhanced files next to them.",
+        "NSDesktopFolderUsageDescription": "Fame reads your session's recordings to upload and enhance them, and saves enhanced files next to them.",
+        "NSDownloadsFolderUsageDescription": "Fame reads your session's recordings to upload and enhance them, and saves enhanced files next to them.",
+        "NSRemovableVolumesUsageDescription": "Fame reads recordings on external drives to upload and enhance them.",
+        "NSNetworkVolumesUsageDescription": "Fame reads recordings on network drives to upload and enhance them."
+      }
     },
     "win": {
       "target": [
