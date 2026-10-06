@@ -2666,7 +2666,10 @@ var ENHANCE_MODES = [
   { id: "studio", label: "Studio", help: "Clean, then rebuilds a fuller 'broadcast mic' sound. Slowest - listen closely." },
 ];
 var ENHANCE_NOT_SPEECH = /music|\bbed\b|jingle|sting|intro|outro|theme|sfx/i;
-var ENH = { mode: "clean", strength: 90, level: true, addTracks: true, preview: false, jobs: [], pollMs: 6000 };
+// Two amounts, not a mode + one strength (Andy, 6 Oct 2026). Both default to
+// 100 - his pick on his own clip. Voice 0 skips the slow rebuild step.
+var ENH = { noise: 100, voice: 100, level: true, addTracks: true, preview: false, jobs: [], pollMs: 6000 };
+function enhanceLabel(j) { return "noise " + j.noise + " voice " + j.voice; }
 var ENHANCE_PREVIEW_SEC = 60;
 // Recordings only - the session file (.ptx), fades and render folders also
 // show up as "paths" on the timeline (Andy's .ptx error, 5 Oct 2026).
@@ -2688,7 +2691,7 @@ function enhanceOutPath(src, job) {
   var sep = src.indexOf("\\") >= 0 ? "\\" : "/";
   var dir = src.replace(/[\\/][^\\/]*$/, "");
   var stem = basename(src).replace(/\.[a-z0-9]{1,5}$/i, "");
-  var base = dir + sep + "Fame Enhanced" + sep + stem + " (Fame Enhance " + job.mode + " " + job.strength + "%" + (job.previewSec ? " preview" : "") + ")";
+  var base = dir + sep + "Fame Enhanced" + sep + stem + " (Fame Enhance " + enhanceLabel(job) + (job.previewSec ? " preview" : "") + ")";
   function attempt(i) {
     var p = base + (i > 1 ? " " + i : "") + ".wav";
     return window.fame.fileSize(p).then(function (n) { return n > 0 ? attempt(i + 1) : p; });
@@ -2712,7 +2715,7 @@ function runEnhanceJob(job) {
     return window.fame.uploadFile({ filePath: job.path, sessionUri: s.sessionUri, mimeType: mime });
   }).then(function (meta) {
     enhanceSet(job, "starting", "Starting the GPU…");
-    return apiFetch("/enhance", { method: "POST", body: { op: "start", inputFileId: meta.id, filename: job.name, mode: job.mode, strength: job.strength, level: job.level, previewSec: job.previewSec || 0, source: DAW } }).then(enhanceJson);
+    return apiFetch("/enhance", { method: "POST", body: { op: "start", inputFileId: meta.id, filename: job.name, mode: job.voice > 0 ? "studio" : "clean", strength: job.noise, noise: job.noise, voice: job.voice, level: job.level, previewSec: job.previewSec || 0, source: DAW } }).then(enhanceJson);
   }).then(function (r) {
     if (r.job.status === "error") throw new Error(r.job.error || "the GPU service didn't take the job");
     job.id = r.job.id;
@@ -2733,7 +2736,7 @@ function pollEnhanceJob(job) {
         });
       }).then(function (p) {
         job.out = p;
-        logChange("Fame Enhance (" + job.mode + ") on " + job.name);
+        logChange("Fame Enhance (" + enhanceLabel(job) + ") on " + job.name);
         if (job.previewSec) return enhanceSet(job, "done", "Preview ready - compare Original and Enhanced below. Happy? Untick Quick preview and run it on the whole file.");
         if (!(job.addTrack && can("assembly"))) return enhanceSet(job, "done", "Done - saved to " + p);
         var stem = basename(job.path).replace(/\.[a-z0-9]{1,5}$/i, "");
@@ -2785,7 +2788,7 @@ function startEnhance(paths) {
   paths.forEach(function (p) {
     if (!p || seen[p]) return;
     seen[p] = 1;
-    var job = { path: p, name: basename(p), mode: ENH.mode, strength: ENH.strength, level: ENH.level, addTrack: ENH.addTracks, previewSec: ENH.preview ? ENHANCE_PREVIEW_SEC : 0, stage: "queued", msg: "" };
+    var job = { path: p, name: basename(p), noise: ENH.noise, voice: ENH.voice, level: ENH.level, addTrack: ENH.addTracks, previewSec: ENH.preview ? ENHANCE_PREVIEW_SEC : 0, stage: "queued", msg: "" };
     ENH.jobs.push(job);
     runEnhanceJob(job);
   });
@@ -2818,25 +2821,21 @@ function renderEnhance() {
   head.appendChild(btn("linklike", "Close", function () { host.className = "hidden"; }));
   host.appendChild(head);
   host.appendChild(div("cl-sub", "Noise and room echo removed on Fame's GPU. Each result is a WAV in a \"Fame Enhanced\" folder next to the original - same length and timing. Your originals are never changed."));
-  var modes = div("chips");
-  ENHANCE_MODES.forEach(function (m) {
-    var b = btn("filter" + (ENH.mode === m.id ? " active" : ""), m.label, function () { ENH.mode = m.id; renderEnhance(); });
-    b.title = m.help;
-    modes.appendChild(b);
-  });
-  host.appendChild(modes);
-  ENHANCE_MODES.forEach(function (m) { if (m.id === ENH.mode) host.appendChild(div("cl-sub", m.help)); });
-
-  var sl = document.createElement("label");
-  sl.className = "enh-row";
-  var slText = document.createElement("span");
-  slText.textContent = "Strength " + ENH.strength + "%";
-  var slider = document.createElement("input");
-  slider.type = "range"; slider.min = 30; slider.max = 100; slider.value = ENH.strength;
-  slider.oninput = function () { ENH.strength = Number(slider.value); slText.textContent = "Strength " + slider.value + "%"; };
-  sl.appendChild(slText);
-  sl.appendChild(slider);
-  host.appendChild(sl);
+  function slider(label, key, hint) {
+    var l = document.createElement("label");
+    l.className = "enh-row";
+    var t = document.createElement("span");
+    t.textContent = label + " " + ENH[key] + "%";
+    var r = document.createElement("input");
+    r.type = "range"; r.min = 0; r.max = 100; r.step = 5; r.value = ENH[key];
+    r.oninput = function () { ENH[key] = Number(r.value); t.textContent = label + " " + r.value + "%"; };
+    l.appendChild(t);
+    l.appendChild(r);
+    host.appendChild(l);
+    host.appendChild(div("cl-sub", hint));
+  }
+  slider("Noise removal", "noise", "Background noise and hum. Lower keeps more of the natural room sound.");
+  slider("Voice enhancement", "voice", "Rebuilds a fuller, clearer \"studio mic\" voice. 0 skips it - much faster. Listen closely at high settings.");
   function checkbox(label, key) {
     var l = document.createElement("label");
     l.className = "enh-row";
@@ -2859,7 +2858,7 @@ function renderEnhance() {
 
   ENH.jobs.slice().reverse().forEach(function (j) {
     var r = div("enh-job");
-    r.appendChild(div("enh-name", j.name + " (" + j.mode + ")"));
+    r.appendChild(div("enh-name", j.name + " (" + enhanceLabel(j) + ")"));
     r.appendChild(div("enh-msg " + (j.stage === "error" ? "bad" : j.stage === "done" ? "good" : ""), j.msg || ""));
     if (j.stage === "done" && j.out) r.appendChild(enhanceAB(j));
     host.appendChild(r);
