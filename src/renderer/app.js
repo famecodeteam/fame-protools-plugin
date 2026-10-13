@@ -1610,7 +1610,31 @@ function loadBrief() {
     .catch(function () {});
 }
 
+// Compact box above the brief: the AM/PM's edit rules for this client.
+// Hidden when there are none.
+function renderClientNotes() {
+  var host = $("client-notes");
+  var notes = FameCore.clientNotes(briefData);
+  host.innerHTML = "";
+  if (!notes.length) { host.className = "hidden"; return; }
+  host.className = "";
+  var eb = document.createElement("div");
+  eb.className = "eyebrow";
+  eb.textContent = "Client notes";
+  host.appendChild(eb);
+  notes.forEach(function (n) {
+    var d = document.createElement("div");
+    d.className = "cn-row";
+    var b = document.createElement("b");
+    b.textContent = n.label + ": ";
+    d.appendChild(b);
+    d.appendChild(document.createTextNode(n.text));
+    host.appendChild(d);
+  });
+}
+
 function renderBrief() {
+  renderClientNotes();
   var host = $("brief");
   if (!briefData) { host.className = "hidden"; return; }
   host.innerHTML = "";
@@ -2537,6 +2561,7 @@ $("btn-signout").onclick = function () {
   $("cleanup").className = "hidden";
   $("deliver").className = "hidden";
   $("brief").className = "hidden";
+  $("client-notes").className = "hidden";
   $("hook").className = "hidden";
   resetCleanup();
   showView("login");

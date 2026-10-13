@@ -176,7 +176,18 @@
     return msg + " Press Diagnostics, Copy for Tom, and send it over.";
   }
 
+  // The client's edit rules from Team Portal (content to cut, audio/LFV lip
+  // sync, shot rules), served on the brief as audioNotes. Only well-formed
+  // rows survive, so an older server or junk data shows no box at all.
+  function clientNotes(brief) {
+    var list = (brief && Array.isArray(brief.audioNotes)) ? brief.audioNotes : [];
+    return list.filter(function (n) {
+      return n && typeof n.label === "string" && typeof n.text === "string" && n.text !== "";
+    });
+  }
+
   return {
+    clientNotes: clientNotes,
     basename: basename, clipMentionsSpeaker: clipMentionsSpeaker, mapCandidate: mapCandidate,
     unmappedReason: unmappedReason, sameFile: sameFile,
     selectedRanges: selectedRanges, tracksForSpeaker: tracksForSpeaker, sourceAnchor: sourceAnchor,

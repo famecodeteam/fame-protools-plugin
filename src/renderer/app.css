@@ -189,6 +189,12 @@ button:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
   font-variant-numeric: tabular-nums;
 }
 .cl-row .cl-t:hover { color: var(--pink); }
+#client-notes {
+  border: 1px solid var(--line); border-left: 3px solid var(--pink); border-radius: 16px;
+  padding: 10px 12px; background: var(--ink-raised); font-size: 12px;
+}
+#client-notes .cn-row { margin-top: 3px; }
+#client-notes .cn-row b { color: var(--pink); font-weight: 600; }
 #brief {
   border: 1px solid var(--line); border-radius: 16px;
   padding: 10px 12px; background: var(--ink-raised); font-size: 12px;

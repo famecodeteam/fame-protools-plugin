@@ -25,6 +25,15 @@ function check(name, fn) {
 const near = (a, b, tol) => Math.abs(a - b) <= (tol || 0.002);
 
 async function main() {
+  console.log("client notes");
+  await check("client notes: rows from the brief, junk and empties dropped", () => {
+    assert.deepStrictEqual(core.clientNotes(null), []);
+    assert.deepStrictEqual(core.clientNotes({}), []);
+    assert.deepStrictEqual(core.clientNotes({ audioNotes: [{ label: "x" }, "y", { label: "Content to cut", text: "" }] }), []);
+    const rows = core.clientNotes({ audioNotes: [{ label: "Content to cut", text: "Cut any talk of pricing" }] });
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].label, "Content to cut");
+  });
   console.log("mapping rules");
   const dms = fixture("cleanup-dms-27-denis-vozian-b1fd7.json").state;
   const cands = dms.candidates;
