@@ -181,13 +181,20 @@
   // rows survive, so an older server or junk data shows no box at all.
   function clientNotes(brief) {
     var list = (brief && Array.isArray(brief.audioNotes)) ? brief.audioNotes : [];
-    return list.filter(function (n) {
+    var ok = list.filter(function (n) {
       return n && typeof n.label === "string" && typeof n.text === "string" && n.text !== "";
     });
+    // Don'ts always first, whatever order they arrive in.
+    return ok.filter(isDontNote).concat(ok.filter(function (n) { return !isDontNote(n); }));
+  }
+
+  // kind "dont", or the "Don't" label from a server that predates kind.
+  function isDontNote(n) {
+    return !!n && (n.kind === "dont" || n.label === "Don't" || n.label === "Don\u2019t");
   }
 
   return {
-    clientNotes: clientNotes,
+    clientNotes: clientNotes, isDontNote: isDontNote,
     basename: basename, clipMentionsSpeaker: clipMentionsSpeaker, mapCandidate: mapCandidate,
     unmappedReason: unmappedReason, sameFile: sameFile,
     selectedRanges: selectedRanges, tracksForSpeaker: tracksForSpeaker, sourceAnchor: sourceAnchor,

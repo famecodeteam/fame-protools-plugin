@@ -1623,10 +1623,11 @@ function renderClientNotes() {
   eb.textContent = "Client notes";
   host.appendChild(eb);
   notes.forEach(function (n) {
+    var dont = FameCore.isDontNote(n);
     var d = document.createElement("div");
-    d.className = "cn-row";
+    d.className = dont ? "cn-row cn-dont" : "cn-row";
     var b = document.createElement("b");
-    b.textContent = n.label + ": ";
+    b.textContent = (dont ? "Don't" : n.label) + ": ";
     d.appendChild(b);
     d.appendChild(document.createTextNode(n.text));
     host.appendChild(d);

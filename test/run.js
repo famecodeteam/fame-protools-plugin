@@ -34,6 +34,15 @@ async function main() {
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].label, "Content to cut");
   });
+  await check("client notes: don'ts first, by kind or label; older rows unchanged", () => {
+    const rows = core.clientNotes({ audioNotes: [
+      { label: "Content to cut", text: "Cut pricing" },
+      { label: "Don't", text: "Never mention rivals", kind: "dont" },
+      { label: "Don't", text: "No intro music" },
+    ] });
+    assert.deepStrictEqual(rows.map((r) => r.text), ["Never mention rivals", "No intro music", "Cut pricing"]);
+    assert.ok(core.isDontNote(rows[0]) && core.isDontNote(rows[1]) && !core.isDontNote(rows[2]));
+  });
   console.log("mapping rules");
   const dms = fixture("cleanup-dms-27-denis-vozian-b1fd7.json").state;
   const cands = dms.candidates;
