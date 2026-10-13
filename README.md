@@ -46,12 +46,24 @@ node test/serve.js <adminKey>                      # then http://localhost:5052/
 
 1. `node scripts/release.js 1.2.3 "banner notes"` - bumps `package.json`
    and writes `../Video Review Tool/public/protools/version.json`.
-2. `GH_TOKEN=... npm run dist -- --publish always` - builds the installers and
-   publishes a GitHub release (`famecodeteam/fame-protools-plugin`),
-   which is also the auto-update feed.
+2. Build and publish the installers to a GitHub release
+   (`famecodeteam/fame-protools-plugin`, also the auto-update feed). Run
+   electron-builder directly - `npm run dist -- --publish always` does NOT
+   upload, because the `dist` script already passes `--publish never`:
+   ```
+   export GH_TOKEN=$(gh auth token)
+   npx electron-builder --mac --publish always          # dmg + zip + latest-mac.yml
+   npx electron-builder --win --x64 --publish always    # exe + latest.yml (separate step)
+   ```
+   Then check the release has all 8 assets and is not a draft:
+   `gh release view v1.2.3 -R famecodeteam/fame-protools-plugin`
+   (if it is a draft: `gh release edit v1.2.3 --draft=false -R famecodeteam/fame-protools-plugin`).
 3. Commit + PR the review-tool side (version.json), merge - the install
    page reads it.
-4. Update the working-procedure doc in place (never a new doc).
+4. Push this repo's version bump to `main`.
+5. Confirm `https://review.fame.so/protools/version.json` shows the new
+   version once the review-tool deploy finishes.
+6. Update the working-procedure doc in place (never a new doc).
 
 Requires Pro Tools 2025.10+ on the editor's machine (see the spec's Phase 0
 findings for why). Mac builds are unsigned until an Apple Developer ID

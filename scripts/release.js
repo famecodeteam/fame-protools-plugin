@@ -2,7 +2,8 @@
 // installers and the auto-update feed all read it), then write the
 // review-tool repo's public/protools/version.json so the in-app banner
 // and the install page agree. Commit + PR the VRT side after; publish the
-// installers with `npm run dist -- --publish always` (GH_TOKEN set).
+// installers with `npx electron-builder --mac --publish always`, then
+// `--win --x64` (GH_TOKEN set) - `npm run dist` forces --publish never.
 //
 //   node scripts/release.js <version> "Banner notes for this version"
 const fs = require("fs");
