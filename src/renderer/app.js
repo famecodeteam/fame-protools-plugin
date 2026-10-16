@@ -2694,7 +2694,13 @@ var ENHANCE_MODES = [
 var ENHANCE_NOT_SPEECH = /music|\bbed\b|jingle|sting|intro|outro|theme|sfx/i;
 // Two amounts, not a mode + one strength (Andy, 6 Oct 2026). Both default to
 // 100 - his pick on his own clip. Voice 0 skips the slow rebuild step.
-var ENH = { noise: 100, voice: 100, level: true, addTracks: true, preview: false, jobs: [], pollMs: 6000 };
+function enhancePreviewStart() {
+  // "12:30", "1:02:03" or plain seconds -> seconds.
+  var parts = String(ENH.previewAt || "").trim().split(":").map(Number);
+  if (!parts.length || parts.some(isNaN)) return 0;
+  return Math.max(0, Math.round(parts.reduce(function (a, n) { return a * 60 + n; }, 0)));
+}
+var ENH = { noise: 100, voice: 100, level: true, addTracks: true, preview: false, previewSec: 60, previewAt: "", jobs: [], pollMs: 6000 };
 function enhanceLabel(j) { return "noise " + j.noise + " voice " + j.voice; }
 var ENHANCE_PREVIEW_SEC = 60;
 // Recordings only - the session file (.ptx), fades and render folders also
@@ -2741,7 +2747,7 @@ function runEnhanceJob(job) {
     return window.fame.uploadFile({ filePath: job.path, sessionUri: s.sessionUri, mimeType: mime });
   }).then(function (meta) {
     enhanceSet(job, "starting", "Starting the GPU…");
-    return apiFetch("/enhance", { method: "POST", body: { op: "start", inputFileId: meta.id, filename: job.name, mode: job.voice > 0 ? "studio" : "clean", strength: job.noise, noise: job.noise, voice: job.voice, level: job.level, previewSec: job.previewSec || 0, source: DAW } }).then(enhanceJson);
+    return apiFetch("/enhance", { method: "POST", body: { op: "start", inputFileId: meta.id, filename: job.name, mode: job.voice > 0 ? "studio" : "clean", strength: job.noise, noise: job.noise, voice: job.voice, level: job.level, previewSec: job.previewSec || 0, previewStart: job.previewStart || 0, source: DAW } }).then(enhanceJson);
   }).then(function (r) {
     if (r.job.status === "error") throw new Error(r.job.error || "the GPU service didn't take the job");
     job.id = r.job.id;
@@ -2763,7 +2769,7 @@ function pollEnhanceJob(job) {
       }).then(function (p) {
         job.out = p;
         logChange("Fame Enhance (" + enhanceLabel(job) + ") on " + job.name);
-        if (job.previewSec) return enhanceSet(job, "done", "Preview ready - compare Original and Enhanced below. Happy? Untick Quick preview and run it on the whole file.");
+        if (job.previewSec) return enhanceSet(job, "done", "Preview ready - compare Original and Enhanced below. Happy? Try another start point, or untick Quick preview and run it on the whole file.");
         if (!(job.addTrack && can("assembly"))) return enhanceSet(job, "done", "Done - saved to " + p);
         var stem = basename(job.path).replace(/\.[a-z0-9]{1,5}$/i, "");
         return hands.buildAssembly([{ path: p, name: stem + " (Enhanced)" }]).then(function () {
@@ -2814,7 +2820,7 @@ function startEnhance(paths) {
   paths.forEach(function (p) {
     if (!p || seen[p]) return;
     seen[p] = 1;
-    var job = { path: p, name: basename(p), noise: ENH.noise, voice: ENH.voice, level: ENH.level, addTrack: ENH.addTracks, previewSec: ENH.preview ? ENHANCE_PREVIEW_SEC : 0, stage: "queued", msg: "" };
+    var job = { path: p, name: basename(p), noise: ENH.noise, voice: ENH.voice, level: ENH.level, addTrack: ENH.addTracks, previewSec: ENH.preview ? ENH.previewSec : 0, previewStart: ENH.preview ? enhancePreviewStart() : 0, stage: "queued", msg: "" };
     ENH.jobs.push(job);
     runEnhanceJob(job);
   });
@@ -2873,7 +2879,29 @@ function renderEnhance() {
     return l;
   }
   host.appendChild(checkbox("Level to podcast loudness (-16 LUFS)", "level"));
-  host.appendChild(checkbox("Quick preview - the first " + ENHANCE_PREVIEW_SEC + " seconds only, to judge the mode and strength", "preview"));
+  host.appendChild(checkbox("Quick preview - enhance a short section first to judge the settings", "preview"));
+
+  // Preview length + start point (Andy, 16 Oct 2026): hosts often talk past
+  // the first minute, so the guest's opening can be silent.
+  var prow = document.createElement("div");
+  prow.className = "enh-row";
+  prow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:22px";
+  var plen = document.createElement("select");
+  [[30, "30 sec"], [60, "1 min"], [120, "2 min"], [300, "5 min"]].forEach(function (o) {
+    var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1];
+    if (o[0] === ENH.previewSec) op.selected = true;
+    plen.appendChild(op);
+  });
+  plen.onchange = function () { ENH.previewSec = Number(plen.value); };
+  var pat = document.createElement("input");
+  pat.type = "text"; pat.placeholder = "0:00"; pat.value = ENH.previewAt; pat.style.width = "70px";
+  pat.title = "Where to start, as minutes:seconds into the recording - e.g. 12:30 for a problem area.";
+  pat.oninput = function () { ENH.previewAt = pat.value; };
+  prow.appendChild(document.createTextNode("Length"));
+  prow.appendChild(plen);
+  prow.appendChild(document.createTextNode("starting at"));
+  prow.appendChild(pat);
+  host.appendChild(prow);
   if (can("assembly")) host.appendChild(checkbox(FILE_BASED ? "Write a track archive to import each result" : "Add each result as a new track at the session start", "addTracks"));
 
   var row = div("row");
